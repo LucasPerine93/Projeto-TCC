@@ -79,17 +79,17 @@ if __name__ == "__main__":
 
     cam1 = Camera(
         id_camera=1,
-        resolucao_w=460,
-        resolucao_h=400
+        resolucao_w=720,
+        resolucao_h=460
     )
               
     cam2 = Camera(
         id_camera=0,
-        resolucao_w=460,
-        resolucao_h=400
+        resolucao_w=720,
+        resolucao_h=460
     )
           
-    juntar = Frame(qualidade_img=35)
+    juntar = Frame(qualidade_img=20)
     transmitir = Servidor(porta=9393, ip="192.168.0.113", cam1=cam1, cam2=cam2, juntar=juntar)
 
     try:
