@@ -1,5 +1,5 @@
 from arduino.app_utils import App, Bridge
-from video_object_detection import VideoObjectDetection
+from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from arduino.app_peripherals.camera import WebSocketCamera
 from arduino.app_bricks.telegram_bot import TelegramBot, Sender
 from arduino.app_bricks.web_ui import WebUI
@@ -18,26 +18,13 @@ matrix = True # T: matrix é utilizada | F: matrix não é utilizada
 num_dispositivos = 0 # Dispositivos conectados
 
 bot = TelegramBot()
+cam = WebSocketCamera(port=9393, resolution=(920, 460), fps=15)
 
-cam1 = WebSocketCamera(port=8080, resolution=(320, 240), fps=15)
-cam2 = WebSocketCamera(port=9393, resolution=(320, 240), fps=15)
-
-deteccao1 = VideoObjectDetection(
-    cam1, 
-    confidence=0.6, 
-    debounce_sec=0, 
-    camera_preview=True, 
-    stream_port=5050, 
-    service="ei-video-obj-detection-runner1",
-)
-
-deteccao2 = VideoObjectDetection(
-    cam2, 
+deteccao = VideoObjectDetection(
+    cam, 
     confidence=0.6, 
     debounce_sec=0, 
     camera_preview=True,
-    stream_port=5051, 
-    service="ei-video-obj-detection-runner2",
 )
 
 ui = WebUI()
@@ -64,10 +51,22 @@ class Detectar:
                     return
     
             img = Image.open(io.BytesIO(frame)).convert('RGB')
-            ImageDraw.Draw(img).rectangle([x1, y1, x2, y2], outline="red", width=3)
+            
+            largura, altura = img.size
+            meio_x = largura // 2
+
+            if self.camera_deteccao == "camera 1":
+                img_lado = img.crop((0, 0, meio_x, altura)) # Imagem esquerda
+                cord_retangulo = [x1, y1, x2, y2]
+
+            if self.camera_deteccao == "camera 2":
+                img_lado = img.crop((meio_x, 0, largura, altura)) # Imagem direita
+                cord_retangulo = [x1 - meio_x, y1, x2 - meio_x, y2]
+            
+            ImageDraw.Draw(img_lado).rectangle(cord_retangulo, outline="red", width=3)
     
             bytes_imagem_com_caixas = io.BytesIO()
-            img.save(bytes_imagem_com_caixas, format="JPEG")
+            img_lado.save(bytes_imagem_com_caixas, format="JPEG")
             imagem_com_caixas = bytes_imagem_com_caixas.getvalue()
                 
             bot.send_photo(ID_chat, imagem_com_caixas, f"Pessoa detectada na {self.camera_deteccao}")
@@ -83,13 +82,25 @@ class Detectar:
 espiao1 = Detectar(camera_deteccao="camera 1", limite_movimento=55)
 espiao2 = Detectar(camera_deteccao="camera 2", limite_movimento=40)
 
+def callback_deteccao(specs_frame, frame=None):
+    if frame is None:
+        return
+        
+    img_tamanho = Image.open(io.BytesIO(frame))
+    largura, _ = img_tamanho.size
 
-def callback_deteccao1(specs_frame, frame=None):
-    espiao1.pessoa_detectada(specs_frame, frame)
+    img_metade = largura // 2
     
-def callback_deteccao2(specs_frame, frame=None):
-    espiao2.pessoa_detectada(specs_frame, frame)
-    
+    x1, y2, x2, y2 = specs_frame.get("bounding_box_xyxy")
+    centro = ((x1 + x2) / 2)
+
+    if centro is not None:
+        if centro < img_metade:
+            espiao1.pessoa_detectada(specs_frame, frame)
+
+        else:
+            espiao2.pessoa_detectada(specs_frame, frame)
+            
 
 def esconder_matrix(Sender, _):
     global matrix
@@ -162,8 +173,7 @@ def apr_conectados(Sender, _):
     Sender.reply(f"Numero de dispositivos conectados: {num_dispositivos} | Executar: /bloquear_servidor ?")
     
     
-deteccao1.on_detect("person", callback_deteccao1)
-deteccao2.on_detect("person", callback_deteccao2)
+deteccao.on_detect("person", callback_deteccao)
 
 ui.on_message("senha", verificar_senha)
 ui.on_message("liberar", enviar_permissao)

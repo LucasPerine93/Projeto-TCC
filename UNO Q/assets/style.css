@@ -1,6 +1,6 @@
 /* ===================================================================
    SISTEMA DE SEGURANÇA E CÂMERA ESPIÃ - ARDUINO UNO Q
-   Tema: Cyber Security / Tech Surveillance Interface (Dual Camera HUD)
+   Tema: Cyber Security / Tech Surveillance Interface (Unified Feed HUD)
    Cores Principais: Azul Neon / Holográfico, Preto Tático, Vermelho Alerta
    =================================================================== */
 
@@ -245,11 +245,11 @@ body::after {
 }
 
 /* ===================================================================
-   2. PAINEL DE VÍDEO (TRANSMISSÃO DUPLA DE CÂMERAS)
+   2. PAINEL DE VÍDEO (TRANSMISSÃO DA CÂMERA / STREAM UNIFICADO)
    =================================================================== */
 #painel-video {
     width: 96%;
-    max-width: 1400px;
+    max-width: 1040px;
     margin: 0 auto;
     padding: 30px 24px 28px 24px;
     background: var(--bg-panel);
@@ -287,7 +287,35 @@ iframe {
     color-scheme: dark;
 }
 
-/* Janelas de Transmissão das Câmeras (Dual Stream) */
+/* Janela de Transmissão da Câmera */
+#video {
+    display: block;
+    margin: 0 auto 22px auto;
+    width: 100%;
+    max-width: 920px;
+    height: auto;
+    aspect-ratio: 920 / 440;
+    max-height: 72vh;
+    background-color: #000000 !important;
+    background: #000000 !important;
+    color-scheme: dark;
+    border: 2px solid rgba(0, 240, 255, 0.45);
+    border-radius: 8px;
+    box-shadow: 
+        0 0 35px rgba(0, 150, 255, 0.28),
+        inset 0 0 25px rgba(0, 0, 0, 0.95);
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+#video:hover {
+    border-color: var(--neon-blue);
+    box-shadow: 
+        0 0 45px rgba(0, 240, 255, 0.45),
+        inset 0 0 25px rgba(0, 0, 0, 0.98);
+}
+
+/* Compatibilidade caso existam múltiplos streams */
 #video1,
 #video2 {
     display: inline-block;
@@ -311,18 +339,10 @@ iframe {
     box-sizing: border-box;
 }
 
-#video1:hover,
-#video2:hover {
-    border-color: var(--neon-blue);
-    box-shadow: 
-        0 0 35px rgba(0, 240, 255, 0.45),
-        inset 0 0 25px rgba(0, 0, 0, 0.98);
-}
-
 /* Botão de Bloquear (Lockdown de Segurança) */
 #botao-bloquear {
-    display: block;
-    margin: 15px auto 0 auto;
+    display: inline-block;
+    margin: 0 auto;
     padding: 13px 38px;
     background: linear-gradient(135deg, #4a0614 0%, #8f0e26 50%, #ff2a55 100%);
     border: 1px solid var(--alert-red);
@@ -455,6 +475,11 @@ iframe {
    5. DESIGN RESPONSIVO (MOBILE E TABLETS)
    =================================================================== */
 @media (max-width: 992px) {
+    #painel-video {
+        width: 98%;
+        padding: 24px 18px 22px 18px;
+    }
+    
     #video1,
     #video2 {
         width: 100%;
@@ -489,6 +514,11 @@ iframe {
         width: 100%;
     }
 
+    #video {
+        border-width: 1.5px;
+        margin-bottom: 18px;
+    }
+
     #caixa-senha {
         font-size: 15px;
         padding: 13px 14px;
@@ -506,6 +536,7 @@ iframe {
         font-size: 12px;
     }
     
+    #video,
     #video1,
     #video2 {
         border-width: 1.5px;

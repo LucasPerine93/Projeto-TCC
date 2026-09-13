@@ -9,11 +9,9 @@ const botaoBloquear = document.getElementById("botao-bloquear");
 const caixaSenha = document.getElementById("caixa-senha");
 const mensagemErro = document.getElementById("mensagem-erro");
 
-const videoIframe1 = document.getElementById('video1');
-const videoIframe2 = document.getElementById('video2');
+const videoIframe = document.getElementById('video');
 
-videoIframe1.src = `http://${ip_unoq}:4914/embed`;
-videoIframe2.src = `http://${ip_unoq}:4910/embed`;
+videoIframe.src = `http://${ip_unoq}:4912/embed`;
 
 function mostrarTela() {
     document.getElementById("painel-bloqueio").style.display = "none";

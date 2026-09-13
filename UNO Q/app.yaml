@@ -1,16 +1,14 @@
-name: Monitoramento com visao computacional com mais cameras
+name: Monitoramento com visao computacional  com mais cameras v2
 description: ""
 ports:
-- 8080
 - 9393
 bricks:
-- arduino:telegram_bot:
-    variables:
-      TELEGRAM_BOT_TOKEN: 8671449367:AAHbDhM1__1WG1cvMFBzb_QrUCBCfF0QpHs
 - arduino:web_ui: {}
-- video_object_detection:
+- arduino:video_object_detection:
     model: yolox-object-detection
     devices:
     - remote_camera_0
-    - remote_camera_1
+- arduino:telegram_bot:
+    variables:
+      TELEGRAM_BOT_TOKEN: 8671449367:AAHbDhM1__1WG1cvMFBzb_QrUCBCfF0QpHs
 icon: 📸
