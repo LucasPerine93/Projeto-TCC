@@ -245,11 +245,11 @@ body::after {
 }
 
 /* ===================================================================
-   2. PAINEL DE VÍDEO (TRANSMISSÃO DA CÂMERA / STREAM UNIFICADO)
+   2. PAINEL DE VÍDEO (TRANSMISSÃO DA CÂMERA)
    =================================================================== */
 #painel-video {
     width: 96%;
-    max-width: 1040px;
+    max-width: 840px; /* Ajustado para acomodar perfeitamente os frames de 720px */
     margin: 0 auto;
     padding: 30px 24px 28px 24px;
     background: var(--bg-panel);
@@ -287,62 +287,64 @@ iframe {
     color-scheme: dark;
 }
 
-/* Janela de Transmissão da Câmera */
-#video {
-    display: block;
-    margin: 0 auto 22px auto;
+/* ===================================================================
+   TÉCNICA DE RECORTE E SEPARAÇÃO VERTICAL (SPLIT STREAM HUD)
+   Dimensões ajustadas para 720px largura x 460px altura por frame
+   =================================================================== */
+.camera-stream-wrapper {
+    position: relative;
     width: 100%;
-    max-width: 920px;
-    height: auto;
-    aspect-ratio: 920 / 440;
-    max-height: 72vh;
+    max-width: 720px;
+    aspect-ratio: 720 / 460; /* Proporção exata da câmera individual (720x460) */
+    overflow: hidden;
+    margin: 0 auto 20px auto; /* Espaçamento entre as duas câmeras */
     background-color: #000000 !important;
-    background: #000000 !important;
-    color-scheme: dark;
-    border: 2px solid rgba(0, 240, 255, 0.45);
-    border-radius: 8px;
-    box-shadow: 
-        0 0 35px rgba(0, 150, 255, 0.28),
-        inset 0 0 25px rgba(0, 0, 0, 0.95);
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-}
-
-#video:hover {
-    border-color: var(--neon-blue);
-    box-shadow: 
-        0 0 45px rgba(0, 240, 255, 0.45),
-        inset 0 0 25px rgba(0, 0, 0, 0.98);
-}
-
-/* Compatibilidade caso existam múltiplos streams */
-#video1,
-#video2 {
-    display: inline-block;
-    vertical-align: middle;
-    width: calc(50% - 20px);
-    max-width: 650px;
-    min-width: 300px;
-    height: auto;
-    aspect-ratio: 800 / 640;
-    max-height: 68vh;
-    margin: 10px 8px 20px 8px;
-    background-color: #000000 !important;
-    background: #000000 !important;
-    color-scheme: dark;
     border: 2px solid rgba(0, 240, 255, 0.45);
     border-radius: 8px;
     box-shadow: 
         0 0 25px rgba(0, 150, 255, 0.25),
-        inset 0 0 25px rgba(0, 0, 0, 0.95);
+        inset 0 0 20px rgba(0, 0, 0, 0.95);
     transition: all 0.3s ease;
     box-sizing: border-box;
+}
+
+.camera-stream-wrapper:hover {
+    border-color: var(--neon-blue);
+    box-shadow: 
+        0 0 35px rgba(0, 240, 255, 0.45),
+        inset 0 0 25px rgba(0, 0, 0, 0.98);
+}
+
+/* O iframe carrega os dois frames juntos (720+720 = 1440px), logo ocupa 200% da largura */
+.camera-stream-wrapper iframe,
+.camera-stream-wrapper #video,
+.camera-stream-wrapper #video2 {
+    position: absolute;
+    top: 0;
+    width: 200% !important; /* 200% de 720px = 1440px de resolução total */
+    height: 100% !important; /* 100% de 460px */
+    max-width: none !important;
+    background-color: #000000 !important;
+    border: none !important;
+    display: block;
+}
+
+/* Câmera 1 (Superior): Exibe a metade esquerda (0 a 720px) */
+.cam-superior iframe,
+.cam-superior #video {
+    left: 0 !important;
+}
+
+/* Câmera 2 (Inferior): Desloca 100% (-720px) para exibir a metade direita (720px a 1440px) */
+.cam-inferior iframe,
+.cam-inferior #video2 {
+    left: -100% !important;
 }
 
 /* Botão de Bloquear (Lockdown de Segurança) */
 #botao-bloquear {
     display: inline-block;
-    margin: 0 auto;
+    margin: 10px auto 0 auto;
     padding: 13px 38px;
     background: linear-gradient(135deg, #4a0614 0%, #8f0e26 50%, #ff2a55 100%);
     border: 1px solid var(--alert-red);
@@ -479,14 +481,6 @@ iframe {
         width: 98%;
         padding: 24px 18px 22px 18px;
     }
-    
-    #video1,
-    #video2 {
-        width: 100%;
-        max-width: 720px;
-        display: block;
-        margin: 10px auto 18px auto;
-    }
 }
 
 @media (max-width: 768px) {
@@ -514,9 +508,9 @@ iframe {
         width: 100%;
     }
 
-    #video {
+    .camera-stream-wrapper {
         border-width: 1.5px;
-        margin-bottom: 18px;
+        margin-bottom: 16px;
     }
 
     #caixa-senha {
@@ -536,9 +530,7 @@ iframe {
         font-size: 12px;
     }
     
-    #video,
-    #video1,
-    #video2 {
+    .camera-stream-wrapper {
         border-width: 1.5px;
         min-width: unset;
     }
