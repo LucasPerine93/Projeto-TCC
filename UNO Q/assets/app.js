@@ -1,4 +1,3 @@
-window.onload = () => mostrarTela();
 const ip_unoq = window.location.hostname;
 const ui = new WebUI();
 

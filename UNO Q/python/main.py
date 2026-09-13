@@ -12,13 +12,13 @@ ID_chat = 8996760139
 senha = 937389
 
 servidor_bloqueado = 1 # 0 Bloqueado 1 Liberado
-
-matrix = True # T: matrix é utilizada | F: matrix não é utilizada
-
 num_dispositivos = 0 # Dispositivos conectados
 
+matrix = True # T: matrix é utilizada | F: matrix não é utilizado
+ativar_envio = True # T: manda fotos | F: não manda fotos
+
 bot = TelegramBot()
-cam = WebSocketCamera(port=9393, resolution=(920, 460), fps=15)
+cam = WebSocketCamera(port=9393, resolution=(1440, 720), fps=12)
 
 deteccao = VideoObjectDetection(
     cam, 
@@ -37,47 +37,50 @@ class Detectar:
         
     def pessoa_detectada(self, specs_frame, frame=None):
         global matrix
-        
-        if frame is None:
-            return
-        try:
-            x1, y1, x2, y2 = specs_frame.get('bounding_box_xyxy') # Pega as cordenadas x e y do retangulo
-            
-            centro_atual = ((x1 + x2) / 2, (y1 + y2) / 2) # Acha o centro do retangulo
-    
-            if self.posicao_anterior is not None:
-                distancia = math.dist(centro_atual, self.posicao_anterior) # Calcula a distancia do centro atual para a distancia anterior
-                if distancia < self.limite_movimento: # Se for menor que o limite de movimento não manda a imagem
-                    return
-    
-            img = Image.open(io.BytesIO(frame)).convert('RGB')
-            
-            largura, altura = img.size
-            meio_x = largura // 2
+        global deteccao_ativa
 
-            if self.camera_deteccao == "camera 1":
-                img_lado = img.crop((0, 0, meio_x, altura)) # Imagem esquerda
-                cord_retangulo = [x1, y1, x2, y2]
-
-            if self.camera_deteccao == "camera 2":
-                img_lado = img.crop((meio_x, 0, largura, altura)) # Imagem direita
-                cord_retangulo = [x1 - meio_x, y1, x2 - meio_x, y2]
+        if ativar_envio == True:
             
-            ImageDraw.Draw(img_lado).rectangle(cord_retangulo, outline="red", width=3)
-    
-            bytes_imagem_com_caixas = io.BytesIO()
-            img_lado.save(bytes_imagem_com_caixas, format="JPEG")
-            imagem_com_caixas = bytes_imagem_com_caixas.getvalue()
+            if frame is None:
+                return
+            try:
+                x1, y1, x2, y2 = specs_frame.get('bounding_box_xyxy') # Pega as cordenadas x e y do retangulo
                 
-            bot.send_photo(ID_chat, imagem_com_caixas, f"Pessoa detectada na {self.camera_deteccao}")
+                centro_atual = ((x1 + x2) / 2, (y1 + y2) / 2) # Acha o centro do retangulo
+        
+                if self.posicao_anterior is not None:
+                    distancia = math.dist(centro_atual, self.posicao_anterior) # Calcula a distancia do centro atual para a distancia anterior
+                    if distancia < self.limite_movimento: # Se for menor que o limite de movimento não manda a imagem
+                        return
+        
+                img = Image.open(io.BytesIO(frame)).convert('RGB')
+                
+                largura, altura = img.size
+                meio_x = largura // 2
     
-            if matrix == True: 
-                Bridge.call("pessoaDetectada")
+                if self.camera_deteccao == "camera 1":
+                    img_lado = img.crop((0, 0, meio_x, altura)) # Imagem esquerda
+                    cord_retangulo = [x1, y1, x2, y2]
     
-            self.posicao_anterior = centro_atual
-            
-        except Exception as e:
-            print(f"[ERRO]: {e}")
+                if self.camera_deteccao == "camera 2":
+                    img_lado = img.crop((meio_x, 0, largura, altura)) # Imagem direita
+                    cord_retangulo = [x1 - meio_x, y1, x2 - meio_x, y2]
+                
+                ImageDraw.Draw(img_lado).rectangle(cord_retangulo, outline="red", width=3)
+        
+                bytes_imagem_com_caixas = io.BytesIO()
+                img_lado.save(bytes_imagem_com_caixas, format="JPEG")
+                imagem_com_caixas = bytes_imagem_com_caixas.getvalue()
+                    
+                bot.send_photo(ID_chat, imagem_com_caixas, f"Pessoa detectada na {self.camera_deteccao}")
+        
+                if matrix == True: 
+                    Bridge.call("pessoaDetectada")
+        
+                self.posicao_anterior = centro_atual
+                
+            except Exception as e:
+                print(f"[ERRO]: {e}")
 
 espiao1 = Detectar(camera_deteccao="camera 1", limite_movimento=55)
 espiao2 = Detectar(camera_deteccao="camera 2", limite_movimento=40)
@@ -139,12 +142,24 @@ def desbloquear_servidor(Sender, _):
     
     Sender.reply("Sevidor desbloqueado")
 
+def ativar_envio(Sender, _):
+    global ativar_envio
+    ativar_envio = True
+
+    Sender.reply("O envio de images foi ativado")
+    
+def desativar_envio(Sender, _):
+    global ativar_envio
+    ativar_envio = False
+
+    Sender.reply("O envio de images foi desativado")
+
 def enviar_permissao(*args):
     global servidorBloqueado
     ui.send_message("permissao", {"servidor": servidor_bloqueado})
 
 def mostrar_comandos(Sender, _):
-    comandos = str("/espiao \n /desativar_espiao \n /bloquear_servidor \n /desbloquear_servidor \n /dispositivos \n /comandos")
+    comandos = str("/espiao \n /desativar_espiao \n /bloquear_servidor \n /desbloquear_servidor \n /dispositivos \n /ativar_envio \n /desativar_envio \n /comandos \n")
     
     Sender.reply("Comandos: ")
     Sender.reply(comandos)
@@ -186,5 +201,7 @@ bot.add_command("bloquear_servidor", bloquear_servidor)
 bot.add_command("desbloquear_servidor", desbloquear_servidor)
 bot.add_command("comandos", mostrar_comandos)
 bot.add_command("dispositivos", apr_conectados)
+bot.add_command("ativar_envio", ativar_envio)
+bot.add_command("desativar_envio", desativar_envio)
 
 App.run()
