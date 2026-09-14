@@ -2,6 +2,10 @@ import cv2
 import asyncio
 import websockets
 import numpy as np
+import threading
+from queue import Queue, Empty
+
+fila_imagens = Queue(maxsize=2)
 
 class Camera:
     def __init__(self, id_camera: int, resolucao_w: int, resolucao_h: int):
@@ -25,53 +29,63 @@ class Camera:
         self.cam.release()
 
 class Frame:
-    def __init__(self, qualidade_img):
+    def __init__(self, qualidade_img, cam1, cam2):
         self.qualidade_img = qualidade_img
 
-    def juntar_frame(self, frame1: np.ndarray, frame2: np.ndarray) -> np.ndarray | None:
-        if frame1 is None or frame2 is None:
-            return None
-        
-        if frame1.shape[0] == frame2.shape[0]:
-            imagem_combinada = cv2.hconcat([frame1, frame2])
-            sucesso, frame = cv2.imencode('.jpg', imagem_combinada, [cv2.IMWRITE_JPEG_QUALITY, self.qualidade_img])
+        self.cam1 = cam1
+        self.cam2 = cam2
 
-            return frame if sucesso else None
+    def juntar_frame(self):
+        while True:
+            frame1 = self.cam1.pegar_video()
+            frame2 = self.cam2.pegar_video()
 
-        else:
-            print("Erro: As imagens têm alturas diferentes! É necessário redimensionar antes.")
-            return None
+            if frame1 is None or frame2 is None:
+                continue
+            
+            if frame1.shape[0] == frame2.shape[0]:
+                imagem_combinada = cv2.hconcat([frame1, frame2])
+                sucesso, frame = cv2.imencode('.jpg', imagem_combinada, [cv2.IMWRITE_JPEG_QUALITY, self.qualidade_img])
+
+                if sucesso == True:
+                    if fila_imagens.full():
+                        try:
+                            fila_imagens.get_nowait()
+                        except Empty:
+                            pass
+                    fila_imagens.put_nowait(frame)
+
+            else:
+                print("Erro: As imagens têm alturas diferentes! É necessário redimensionar antes.")
+                return None
 
 class Servidor:
-    def __init__(self, ip, porta, cam1, cam2, juntar):
+    def __init__(self, ip, porta):
         self.ip = ip
         self.porta = porta
 
         self.uri = f"ws://{self.ip}:{self.porta}?raw=true"
 
-        self.cam1 = cam1
-        self.cam2 = cam2
-        self.juntar = juntar
-
     async def enviar_frames(self):
-
         while True:
             try:
                 print(f"Conectando ao UNO Q em {self.uri}")
                 async with websockets.connect(self.uri) as ws:
                     print("Conectado a placa UNO Q")
                     while True:
-                        frame1 = self.cam1.pegar_video()
-                        frame2 = self.cam2.pegar_video()
-
-                        img = self.juntar.juntar_frame(frame1, frame2)
+                        
+                        try:
+                            img = fila_imagens.get_nowait()
+                        except Empty:
+                            await asyncio.sleep(0.01)
+                            continue
 
                         if img is not None:
                             await ws.send(img.tobytes())
 
                         await asyncio.sleep(0.033)
 
-            except (websockets.exceptions.ConnectionClosed, ConnectionRefusedError, OSError) as e:
+            except (websockets.exceptions.ConnectionClosed, ConnectionRefusedError, OSError, AttributeError) as e:
                 print(f"[ERRO]: Conexão perdida ({e}). Tentando reconectar em 2 segundos")
                 await asyncio.sleep(2)
 
@@ -89,8 +103,11 @@ if __name__ == "__main__":
         resolucao_h=460
     )
           
-    juntar = Frame(qualidade_img=20)
-    transmitir = Servidor(porta=9393, ip="192.168.0.113", cam1=cam1, cam2=cam2, juntar=juntar)
+    juntar = Frame(qualidade_img=20, cam1=cam1, cam2=cam2)
+    transmitir = Servidor(porta=9393, ip="192.168.0.113")
+
+    t1 = threading.Thread(target=juntar.juntar_frame, daemon=True)
+    t1.start()
 
     try:
         asyncio.run(transmitir.enviar_frames())
