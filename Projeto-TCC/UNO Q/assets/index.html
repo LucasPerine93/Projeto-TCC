@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel UNO Q</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="tela-bloqueio" style="display: block;">
+        <input type="text" id="caixa-senha" placeholder="Digite sua senha ...">
+        <button id="enviar-senha">Enviar</button>
+        <span id="mensagem-erro"></span>
+    </div>
+
+    <div id="video-camera" style="display: none;">
+        <div class="video-container">
+            <iframe id="video" width="720" height="460" src="" frameborder="0"></iframe>
+            <canvas id="area-risco" width="720" height="460"></canvas>
+        </div>
+
+        <button id="limpar-box">Limpar</button>
+        <button id="bloquear">Bloquear</button>
+    </div>
+
+    <script src="libs/socket.io.min.js"></script>
+    <script src="libs/arduino.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
