@@ -1,1 +1,4 @@
 .prettierignore
+__pycache__/
+*.pyc
+procedure_events.jsonl
