@@ -1,7 +1,7 @@
-ui = new WebUI();
-ip_unoq = window.location.hostname;
+const ui = new WebUI();
+const ip_unoq = window.location.hostname;
 
-videoIframe = document.getElementById("video");
+const videoIframe = document.getElementById("video");
 videoIframe.src = `http://${ip_unoq}:4912/embed`;
 
 const canvas = document.getElementById("area-risco");
@@ -18,13 +18,12 @@ let desenhando = false;
 let comecoX = 0;
 let comecoY = 0;
 
-let area_risco = 0; // 0 é falso | 1 é verdadeiro
 let area_marcada = null;
 
 function mostrarTela() {
     document.getElementById("tela-bloqueio").style.display = "none";
     document.getElementById("video-camera").style.display = "none";
-
+  
     if (senhaCorreta) {
         document.getElementById("tela-bloqueio").style.display = "none";
         document.getElementById("video-camera").style.display = "block";
@@ -34,7 +33,6 @@ function mostrarTela() {
         document.getElementById("video-camera").style.display = "none";
         campoSenha.focus();
     }
-
 }
 
 botaoSenha.addEventListener('click', () => {
@@ -44,23 +42,25 @@ botaoSenha.addEventListener('click', () => {
     campoSenha.value = "";
 });
 
-ui.on_message("senha_processada", (data) => {
-    let liberacao = parseInt(data["senha_processada"]);
+campoSenha.addEventListener("keydown", (evento) => {
+  if (evento.key === "Enter") {
+    botaoSenha.click();
+  }
+});
 
-    if (liberacao === 0) {
-        senhaCorreta = true;
-    }
+ui.on_message("liberado", () => {
+  senhaCorreta = true;
+  mostrarTela();
+});
 
-    if (liberacao === 1) {
-        senhaCorreta = false;
-
+ui.on_message("rejeitado", () => {
+    senhaCorreta = false;
+    mostrarTela();
+  
     mensagemErro.innerText = "Senha incorreta, tente novamente";
     setTimeout(() => {
         mensagemErro.innerText = "";
     }, 2500);
-    }
-
-    mostrarTela();
 });
 
 botaoBloquear.addEventListener("click", () => {
@@ -78,6 +78,7 @@ function getMousePos(e) {
 
 canvas.addEventListener("mousedown", (e) => {
     const pos = getMousePos(e);
+  
     comecoX = pos.x;
     comecoY = pos.y;
     desenhando = true;
@@ -90,23 +91,27 @@ canvas.addEventListener("mousemove", (e) => {
     const Xatual = pos.x;
     const Yatual = pos.y;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const width = Xatual - comecoX;
+    const height = Yatual - comecoY;
 
+    renderizarRetangulo(comecoX, comecoY, width, height);
+});
+
+function renderizarRetangulo(x1, y1, x2, y2) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  
     ctx.strokeStyle = "#00FF00";
     ctx.lineWidth = 2;
     ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
 
-    width = Xatual - comecoX;
-    height = Yatual - comecoY;
-
-    ctx.fillRect(comecoX, comecoY, width, height);
-    ctx.strokeRect(comecoX, comecoY, width, height);
-});
+    ctx.fillRect(x1, y1, x2, y2);
+    ctx.strokeRect(x1, y1, x2, y2);
+}
 
 canvas.addEventListener("mouseup", (e) => {
     if (!desenhando) return;
-
-    area_risco = 1;
+  
+    desenhando = false;
 
     const pos = getMousePos(e);
     const X_final = pos.x;
@@ -120,24 +125,40 @@ canvas.addEventListener("mouseup", (e) => {
     const width = X_final - comecoX;
     const height = Y_final - comecoY;
 
-    if ((Math.abs(x2 - x1) || Math.abs(y2 - y1)) < 5) {
+    if (width < 5 || height < 5) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        area_marcada = null;
         return;
     }
 
     area_marcada = { x1, y1, x2, y2 };
-
-    desenhando = false;
-    console.log("Coordenadas capturadas:", area_marcada);
-    ui.send_message("area-marcada", area_marcada);
-    ui.send_message("risco", area_risco);
+  
+    ui.send_message("area_marcada", area_marcada);
 });
+
+ui.on_message("box_risco", (data) => {
+    if (!data.length || data.length !== 4) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        return;
+    }
+    
+    const [x1, y1, x2, y2] = data;
+  
+    const comecoX = Math.min(x1, x2);
+    const comecoY = Math.min(y1, y2);
+    const width = Math.abs(x2 - x1);
+    const height = Math.abs(y2 - y1);
+
+    renderizarRetangulo(comecoX, comecoY, width, height);
+});
+
+window.addEventListener("DOMContentLoaded", () => {
+  ui.send_message("retornar_box_risco", {});
+});
+
 
 botaoLimpar.addEventListener("click", () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     area_marcada = null;
-    area_risco = 0;
   
-    ui.send_message("risco", area_risco);
+    ui.send_message("limpar_box_risco", {}); 
 });

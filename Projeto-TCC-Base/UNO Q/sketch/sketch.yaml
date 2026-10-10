@@ -1,9 +1,0 @@
-profiles:
-  default:
-    fqbn:
-    platforms:
-      - platform: arduino:zephyr
-    libraries:
-      - ArduinoGraphics (1.1.5)
-
-default_profile: default

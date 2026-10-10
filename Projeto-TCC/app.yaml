@@ -3,6 +3,6 @@ description: ""
 ports: []
 bricks:
 - arduino:video_object_detection:
-    model: ei-model-1127250-1
+    model: ei-model-1127250-2
 - arduino:web_ui: {}
 icon: 🛡️

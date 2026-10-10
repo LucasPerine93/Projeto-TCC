@@ -32,7 +32,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         box_capacete = dados_capacete['bounding_box_xyxy']
 
         for operario in lista_operarios:
-            if achar_epi(box_capacete, operario.box_xyxy) == True:
+            if verificar_area(box_capacete, operario.box_xyxy) == True:
                 operario.tem_capacete = True
 
 
@@ -41,12 +41,12 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         box_colete = dados_colete['bounding_box_xyxy']
 
         for operario in lista_operarios:
-            if achar_epi(box_colete, operario.box_xyxy) == True:
+            if verificar_area(box_colete, operario.box_xyxy) == True:
                 operario.tem_colete = True
 
     if area_risco_ativa == True:
         for operario in lista_operarios:
-            if area_risco(box_area_risco, operario.box_xyxy) == True:
+            if verificar_area(box_area_risco, operario.box_xyxy) == True:
                 operario.risco_detectado = True
 
     analisar_seguranca(lista_operarios)
@@ -59,16 +59,15 @@ def analisar_seguranca(lista_de_operarios):
             print("[OK]: Operario com todos os EPIs e seguro!")
 
         if operario.tem_colete == False:
-            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identficado sem colete!")
+            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!")
 
         if operario.tem_capacete == False:
-            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identficado sem capacete!")
+            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!")
 
         if operario.risco_detectado == True:
             print(f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!")
 
-
-def achar_epi(box_epi, box_pessoa) -> bool:
+def verificar_area(box_epi, box_pessoa) -> bool:
     px1, py1, px2, py2 = box_pessoa
     ex1, ey1, ex2, ey2 = box_epi
 
@@ -81,31 +80,14 @@ def achar_epi(box_epi, box_pessoa) -> bool:
     else:
         return False
 
-def area_risco(box_risco, box_pessoa) -> bool:
-    px1, py1, px2, py2 = box_pessoa
-    bx1, by1, bx2, by2 = box_risco
-
-    centro_x = ((px1 + px2) / 2)
-    centro_y = ((py1 + py2) / 2)
-
-    if centro_x > bx1 and centro_x < bx2 and centro_y > by1 and centro_y < by2:
-        return True
-    
-    else:
-        return False
-
 def operario_detectado(specs_frame):
     risco = servidor.risco
     box_risco = servidor.box_risco
 
-    if risco == 0: # 0 é falso então e função recebe False para o risco
+    if risco == False: # 0 é falso então e função recebe False para o risco
         organizar_dado(specs_frame, box_risco, False)
         
-    elif risco == 1:
-        organizar_dado(specs_frame, box_risco, True)
-
     else:
-        print("[ERRO]: Risco é diferente de True ou False")
-
+        organizar_dado(specs_frame, box_risco, True)
 
 deteccao.on_detect_all(operario_detectado)
