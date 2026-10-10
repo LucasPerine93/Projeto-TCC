@@ -2,7 +2,7 @@ from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from arduino.app_peripherals.camera import Camera
 from dataclasses import dataclass
 import servidor
-import math
+import time
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
 deteccao = VideoObjectDetection(camera=camera, debounce_sec=0, confidence=0.5, camera_preview=True)
@@ -53,19 +53,26 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
 
     return lista_operarios
 
+ultimo_alerta = 0
+TEMPO_ESPERA = 5
 def analisar_seguranca(lista_de_operarios):
-    for operario in lista_de_operarios:
-        if operario.tem_colete == True and operario.tem_capacete == True and operario.risco_detectado == False:
-            print("[OK]: Operario com todos os EPIs e seguro!")
+    global ultimo_alerta
+    tempo_atual = time.time()
 
-        if operario.tem_colete == False:
-            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!")
+    if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
+        for operario in lista_de_operarios:
+            if operario.tem_colete == True and operario.tem_capacete == True and operario.risco_detectado == False:
+                print("[OK]: Operario com todos os EPIs e seguro!")
 
-        if operario.tem_capacete == False:
-            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!")
+            if operario.tem_colete == False:
+                print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!")
 
-        if operario.risco_detectado == True:
-            print(f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!")
+            if operario.tem_capacete == False:
+                print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!")
+
+            if operario.risco_detectado == True:
+                print(f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!")
+        ultimo_alerta = tempo_atual
 
 def verificar_area_risco(box_risco, box_pessoa) -> bool:
     if not box_risco or not box_pessoa:
@@ -85,6 +92,7 @@ def verificar_area_risco(box_risco, box_pessoa) -> bool:
         return False
 
 def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
+
     # 'o' para Operário, 'e' para EPI
     ox1, oy1, ox2, oy2 = box_operario
     ex1, ey1, ex2, ey2 = box_epi
@@ -93,6 +101,10 @@ def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
 
     centro_x_epi = ((ex1 + ex2) / 2)
     centro_y_epi = ((ey1 + ey2) / 2)
+
+    centro_epi = (centro_x_epi, centro_y_epi)
+    centro_operario = ((ox1 + ox2) / 2, (oy1, oy2) / 2)
+
 
     zona_topo = oy1 + local_corpo[0] * altura
     zona_base = oy1 + local_corpo[1] * altura
