@@ -25,7 +25,6 @@ def verificar_senha(cliente, data):
     else:
         ui.send_message("rejeitado", {}, room=cliente)
 
-
 ui.on_message('senha', verificar_senha)
 ui.on_message('area_marcada', calcular_area)
 ui.on_message("limpar_box_risco", limpar_box_risco)

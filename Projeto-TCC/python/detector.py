@@ -120,10 +120,10 @@ def verificar_area_risco(box_risco, box_pessoa) -> bool:
     px1, py1, px2, py2 = box_pessoa
     rx1, ry1, rx2, ry2 = box_risco
 
-    pe_x = ((px1 + px2) / 2) # Localiza o meio (X) da caixa do operario
-    pe_y = py2 # Localiza o pé do operario 
+    centro_x = ((px1 + px2) / 2)
+    centro_y = ((py1 + py2) / 2)
 
-    if rx1 <= pe_x <= rx2 and ry1 <= pe_y <= ry2:
+    if rx1 <= centro_x <= rx2 and ry1 <= centro_y <= ry2:
         return True
 
     else:
