@@ -3,6 +3,7 @@ from arduino.app_peripherals.camera import Camera
 from dataclasses import dataclass
 import servidor
 import time
+import math
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
 deteccao = VideoObjectDetection(camera=camera, debounce_sec=0, confidence=0.5, camera_preview=True)
@@ -26,23 +27,60 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         novo_operario = Operario(box_xyxy=dados_pessoa["bounding_box_xyxy"])
         lista_operarios.append(novo_operario)
 
-
     capacetes_detectados = specs_frame.get("helmet", [])
     for dados_capacete in capacetes_detectados:
+        melhor_operario = None
+        menor_distancia = float('inf')
+
         box_capacete = dados_capacete['bounding_box_xyxy']
 
         for operario in lista_operarios: # Região do topo a 35% do corpo fica o capacete
             if verificar_epi(box_capacete, operario.box_xyxy, (-0.15, 0.35)) == True:
-                operario.tem_capacete = True
+                cx1, cy1, cx2, cy2 = box_capacete
+                opx1, opy1, opx2, opy2 = operario.box_xyxy
+
+                altura = abs(opy2 - opy1)
+                y_cabeca = opy1 + altura * 0.10
+
+                centro_cabeca_operario = ((opx1 + opx2) / 2, y_cabeca)
+                centro_capacete = ((cx1 + cx2) / 2, (cy1 + cy2) / 2)
+
+                dist = calcular_distacia(centro_capacete, centro_cabeca_operario)
+
+                if dist < menor_distancia:
+                    menor_distancia = dist
+                    melhor_operario = operario
+
+        if melhor_operario is not None:
+            melhor_operario.tem_capacete = True
 
 
     coletes_detectados = specs_frame.get("vest", [])
     for dados_colete in coletes_detectados:
+        melhor_operario = None
+        menor_distancia = float('inf')
+
         box_colete = dados_colete['bounding_box_xyxy']
 
         for operario in lista_operarios: # Região de 36% do corpo até 80% fica o colete
             if verificar_epi(box_colete, operario.box_xyxy, (0.36, 0.80)) == True:
-                operario.tem_colete = True
+                cx1, cy1, cx2, cy2 = box_colete
+                opx1, opy1, opx2, opy2 = operario.box_xyxy
+
+                altura = abs(opy2 - opy1)
+                y_colete = opy1 + altura * 0.55
+
+                centro_tronco_operario = ((opx1 + opx2) / 2, y_colete)
+                centro_colete = ((cx1 + cx2) / 2, (cy1 + cy2) / 2)
+
+                dist = calcular_distacia(centro_colete, centro_tronco_operario)
+
+                if dist < menor_distancia:
+                    menor_distancia = dist
+                    melhor_operario = operario
+
+        if melhor_operario is not None:
+            melhor_operario.tem_colete = True
 
     if area_risco_ativa == True:
         for operario in lista_operarios:
@@ -93,7 +131,7 @@ def verificar_area_risco(box_risco, box_pessoa) -> bool:
 
 def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
 
-    # 'o' para Operário, 'e' para EPI
+    # 'o' para Operario, 'e' para EPI
     ox1, oy1, ox2, oy2 = box_operario
     ex1, ey1, ex2, ey2 = box_epi
 
@@ -101,10 +139,6 @@ def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
 
     centro_x_epi = ((ex1 + ex2) / 2)
     centro_y_epi = ((ey1 + ey2) / 2)
-
-    centro_epi = (centro_x_epi, centro_y_epi)
-    centro_operario = ((ox1 + ox2) / 2, (oy1, oy2) / 2)
-
 
     zona_topo = oy1 + local_corpo[0] * altura
     zona_base = oy1 + local_corpo[1] * altura
@@ -117,6 +151,9 @@ def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
 
     else:
         return False
+
+def calcular_distacia(posicao1, posicao2) -> float:
+    return math.dist(posicao1, posicao2)
 
 def operario_detectado(specs_frame):
     risco = servidor.risco
