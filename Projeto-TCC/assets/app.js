@@ -96,8 +96,8 @@ canvas.addEventListener("mousemove", (e) => {
     ctx.lineWidth = 2;
     ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
 
-    const width = Xatual - comecoX;
-    const height = Yatual - comecoY;
+    width = Xatual - comecoX;
+    height = Yatual - comecoY;
 
     ctx.fillRect(comecoX, comecoY, width, height);
     ctx.strokeRect(comecoX, comecoY, width, height);
@@ -126,7 +126,7 @@ canvas.addEventListener("mouseup", (e) => {
         return;
     }
 
-    area_marcada = { pixels: { x1, y1, x2, y2 } };
+    area_marcada = { x1, y1, x2, y2 };
 
     desenhando = false;
     console.log("Coordenadas capturadas:", area_marcada);

@@ -1,25 +1,17 @@
 from arduino.app_bricks.web_ui import WebUI
 
-centro = None
-width = None
-height = None
-
+box_risco = None
 senha_acesso = 937389
-
 risco = 0 # 1 é veradeiro | 0 é falso | a variavel começa como falsa
 
 ui = WebUI()
 
 def calcular_area(_, data):
-    global centro, width, height
-    
-    x1, y1, x2, y2 = data.get('pixels').values()
-    centro = ((x1 + x2) / 2, (y1 + y2) / 2)
+    global box_risco
+    box_risco = data.values()
 
-    width = x1 - x2
-    height = y1 - y2
 
-def calcular_risco(_, data):
+def risco_ativo(_, data):
     global risco
     r = data
     risco = r
@@ -36,4 +28,4 @@ def verificar_senha(_, data):
 
 ui.on_message('senha', verificar_senha)
 ui.on_message('area-marcada', calcular_area)
-ui.on_message('risco', calcular_risco)
+ui.on_message('risco', risco_ativo)
