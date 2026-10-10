@@ -11,6 +11,8 @@ const botaoSenha = document.getElementById("enviar-senha");
 const botaoBloquear = document.getElementById("bloquear");
 const campoSenha = document.getElementById("caixa-senha");
 const mensagemErro = document.getElementById("mensagem-erro");
+const mostrarLogs = document.getElementById("mostrar-logs");
+const botaoLimparLogs = document.getElementById("limpar-logs");
 
 let senhaCorreta = false;
 
@@ -67,6 +69,20 @@ botaoBloquear.addEventListener("click", () => {
     senhaCorreta = false;
     mostrarTela();
 });
+
+ui.on_message("log_deteccao", (log) => {
+    const novoLog = document.createElement('span');
+
+    novoLog.classList.add('mostrar-logs');
+    novoLog.innerText = log + "\n"
+
+    mostrarLogs.appendChild(novoLog);
+});
+
+botaoLimparLogs.addEventListener("click", () => {
+    mostrarLogs.innerHTML = "";
+});
+
 
 function getMousePos(e) {
     const rect = canvas.getBoundingClientRect();

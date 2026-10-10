@@ -85,15 +85,19 @@ def analisar_seguranca(lista_de_operarios):
         for operario in lista_de_operarios:
             if operario.tem_colete == True and operario.tem_capacete == True and operario.risco_detectado == False:
                 print("[OK]: Operario com todos os EPIs e seguro!")
+                servidor.enviar_log("[OK]: Operario com todos os EPIs e seguro!")
 
             if operario.tem_colete == False:
                 print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!")
+                servidor.enviar_log(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!")
 
             if operario.tem_capacete == False:
                 print(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!")
+                servidor.enviar_log(f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!")
 
             if operario.risco_detectado == True:
                 print(f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!")
+                servidor.enviar_log(f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!")
         ultimo_alerta = tempo_atual
 
 def verificar_area_risco(box_risco, box_pessoa) -> bool:
