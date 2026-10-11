@@ -37,12 +37,19 @@ def process_frame(
     debounce=None,
     camera_id: Optional[str] = None,
     risk_area: Optional[Dict[str, float]] = None,
+    occurrence=None,
 ) -> Tuple[int, List[ObservationEvent]]:
     """Processa UM frame do on_detect_all no fluxo observacional.
 
     Retorna (n_registros, eventos_escritos). Eventos debounced não são
     escritos mas continuam contabilizados separadamente pelo chamador via
     retorno (n_registros = escritos no EventLog).
+
+    occurrence (opcional): OccurrenceTracker da camada temporal
+    (occurrence.py). Quando fornecido, SUBSTITUI a geração por frame pelo
+    retorno das transições confirmadas (abertura/encerramento de ocorrência);
+    debounce e EventLog continuam iguais. Padrão None = comportamento
+    congelado v3.4.2 (geração por frame).
     """
     camera = camera_id if camera_id is not None else DEFAULT_CAMERA_ID
     area = risk_area if risk_area is not None else DEFAULT_RISK_AREA
@@ -61,8 +68,11 @@ def process_frame(
         a.person_ref: evaluate(a.bbox, area) for a in associations
     }
 
-    # 5) Conformidades -> ObservationEvent.
-    events = generate(associations, contexts)
+    # 5) Conformidades -> ObservationEvent (com camada temporal opcional).
+    if occurrence is not None:
+        events = occurrence.update(camera, associations, contexts)
+    else:
+        events = generate(associations, contexts)
 
     # 6) Debounce (evento, camera_id, person_ref) -> EventLog (status observation).
     written = [e for e in events if write_observation(e, log, debounce) == "written"]
