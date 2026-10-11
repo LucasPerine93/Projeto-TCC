@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -106,8 +107,9 @@ def test_save_image_evidence_rejects_non_image_mime():
 def api_client(tmp_path, monkeypatch):
     """TestClient com get_db sobrescrito para um SQLite em memória isolado.
 
-    Cria apenas a tabela `image_evidence`. Restaura o tipo original da PK
-    (BigInteger) no teardown para não afetar outros testes.
+    Cria `observations` e `image_evidence`, com ocorrências mínimas para os
+    uploads. Restaura o tipo original da PK (BigInteger) no teardown para não
+    afetar outros testes.
     """
     from sqlalchemy import Integer, create_engine
     from sqlalchemy.orm import sessionmaker
@@ -116,7 +118,7 @@ def api_client(tmp_path, monkeypatch):
 
     import app.database as database_module
     from app.main import app
-    from app.models import ImageEvidence
+    from app.models import ImageEvidence, Observation
 
     # Salva imagens em dir temporário (não suja o projeto durante o teste).
     monkeypatch.setenv("TCC_MVP_ROOT", str(tmp_path))
@@ -129,9 +131,13 @@ def api_client(tmp_path, monkeypatch):
 
     # SQLite não faz autoincrement em BIGINT; Integer -> rowid autoincrementável.
     # (Em PostgreSQL o schema usa GENERATED ... AS IDENTITY — não afeta produção.)
-    id_column = ImageEvidence.__table__.c.id
-    original_type = id_column.type
-    id_column.type = Integer()
+    models = (ImageEvidence, Observation)
+    original_types = {}
+    for model in models:
+        id_column = model.__table__.c.id
+        original_types[model] = id_column.type
+        id_column.type = Integer()
+    Observation.__table__.create(bind=engine, checkfirst=True)
     ImageEvidence.__table__.create(bind=engine, checkfirst=True)
 
     TestingSessionLocal = sessionmaker(
@@ -145,6 +151,26 @@ def api_client(tmp_path, monkeypatch):
         finally:
             db.close()
 
+    seed = TestingSessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        for occurrence_id in (1, 7):
+            seed.add(
+                Observation(
+                    id=occurrence_id,
+                    batch_id=1,
+                    event_type_id=1,
+                    person_ref=0,
+                    context="inside",
+                    event_confidence=0.9,
+                    conf_pessoa=0.9,
+                    created_at=now,
+                )
+            )
+        seed.commit()
+    finally:
+        seed.close()
+
     app.dependency_overrides[database_module.get_db] = override_get_db
     client = TestClient(app)
     try:
@@ -152,7 +178,9 @@ def api_client(tmp_path, monkeypatch):
     finally:
         app.dependency_overrides.clear()
         ImageEvidence.__table__.drop(bind=engine, checkfirst=True)
-        id_column.type = original_type
+        Observation.__table__.drop(bind=engine, checkfirst=True)
+        for model in models:
+            model.__table__.c.id.type = original_types[model]
         engine.dispose()
 
 
@@ -353,6 +381,51 @@ def test_full_flow_ingest_then_image_link_then_get(e2e_client):
     assert got.status_code == 200
     assert got.json()["occurrence_id"] == real_occ_id
     assert "image_path" not in got.json()  # caminho absoluto nunca exposto
+
+
+def test_post_images_unknown_occurrence_returns_404_without_creating_file(e2e_client):
+    from app import image_store as image_store_module
+
+    image_dir = image_store_module.get_image_dir()
+    before = set(image_dir.iterdir())
+
+    r = e2e_client.post(
+        "/api/images",
+        files={"image": ("frame.png", io.BytesIO(TEST_PNG), "image/png")},
+        data={"occurrence_id": "999999", "camera_code": "camera_1"},
+    )
+
+    assert r.status_code == 404
+    assert set(image_dir.iterdir()) == before
+
+
+def test_post_images_database_failure_rolls_back_and_removes_new_file(e2e_client):
+    from sqlalchemy import event
+    from sqlalchemy.orm import Session
+
+    from app import image_store as image_store_module
+
+    ing = e2e_client.post("/api/observations/ingest", json=_ingest_payload())
+    assert ing.status_code == 201, ing.text
+    occurrence_id = ing.json()["observation_ids"][0]
+    image_dir = image_store_module.get_image_dir()
+    before = set(image_dir.iterdir())
+
+    def fail_commit(_session):
+        raise RuntimeError("falha de banco simulada")
+
+    event.listen(Session, "before_commit", fail_commit)
+    try:
+        with pytest.raises(RuntimeError, match="falha de banco simulada"):
+            e2e_client.post(
+                "/api/images",
+                files={"image": ("frame.png", io.BytesIO(TEST_PNG), "image/png")},
+                data={"occurrence_id": str(occurrence_id), "camera_code": "camera_1"},
+            )
+    finally:
+        event.remove(Session, "before_commit", fail_commit)
+
+    assert set(image_dir.iterdir()) == before
 
 
 def test_get_image_by_id_not_found(api_client):

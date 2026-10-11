@@ -482,6 +482,11 @@ async def store_image_evidence(
             status_code=422,
             detail="camera_code é obrigatório para identificar a câmera.",
         )
+    # Confere a FK antes de criar o arquivo. Além de retornar um erro de
+    # domínio mais claro que uma violação de constraint, evita evidência órfã
+    # no disco quando o occurrence_id não corresponde a observations.id.
+    if db.get(Observation, occurrence_id) is None:
+        raise HTTPException(status_code=404, detail="Ocorrência não encontrada.")
 
     try:
         file_bytes = await image.read()
@@ -514,9 +519,21 @@ async def store_image_evidence(
         image_path=record["image_path"],
         created_at=datetime.now(timezone.utc),
     )
-    db.add(db_image)
-    db.commit()
-    db.refresh(db_image)
+    try:
+        db.add(db_image)
+        db.commit()
+        db.refresh(db_image)
+    except Exception:
+        # Se o banco rejeitar o registro (inclusive numa corrida onde a
+        # ocorrência foi removida após a checagem acima), não mantenha o
+        # arquivo persistido sem uma ImageEvidence correspondente.
+        db.rollback()
+        try:
+            decode_image_path(record["image_path"]).unlink(missing_ok=True)
+        except OSError:
+            # A exceção original do banco é a causa relevante da falha da API.
+            pass
+        raise
 
     return file_record_to_dict(db_image)
 

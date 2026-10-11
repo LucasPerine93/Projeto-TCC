@@ -69,16 +69,20 @@ def test_actual_post_from_authorized_origin_includes_cors_headers():
 
     import app.main as main_module
     import app.database as database_module
-    from app.models import ImageEvidence
+    from app.models import ImageEvidence, Observation
 
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
-    id_col = ImageEvidence.__table__.c.id
-    original_type = id_col.type
-    id_col.type = Integer()
+    models = (ImageEvidence, Observation)
+    original_types = {}
+    for model in models:
+        id_col = model.__table__.c.id
+        original_types[model] = id_col.type
+        id_col.type = Integer()
+    Observation.__table__.create(bind=engine, checkfirst=True)
     ImageEvidence.__table__.create(bind=engine, checkfirst=True)
     TestingSessionLocal = sessionmaker(
         bind=engine, autoflush=False, expire_on_commit=False
@@ -90,6 +94,26 @@ def test_actual_post_from_authorized_origin_includes_cors_headers():
             yield db
         finally:
             db.close()
+
+    seed = TestingSessionLocal()
+    try:
+        from datetime import datetime, timezone
+
+        seed.add(
+            Observation(
+                id=1,
+                batch_id=1,
+                event_type_id=1,
+                person_ref=0,
+                context="inside",
+                event_confidence=0.9,
+                conf_pessoa=0.9,
+                created_at=datetime.now(timezone.utc),
+            )
+        )
+        seed.commit()
+    finally:
+        seed.close()
 
     app.dependency_overrides[main_module.get_db] = _db
     try:
@@ -114,7 +138,9 @@ def test_actual_post_from_authorized_origin_includes_cors_headers():
     finally:
         app.dependency_overrides.clear()
         ImageEvidence.__table__.drop(bind=engine, checkfirst=True)
-        id_col.type = original_type
+        Observation.__table__.drop(bind=engine, checkfirst=True)
+        for model in models:
+            model.__table__.c.id.type = original_types[model]
         engine.dispose()
     # Upload aceito; o middleware anexa CORS à resposta de sucesso.
     assert r.status_code == 201, r.text
