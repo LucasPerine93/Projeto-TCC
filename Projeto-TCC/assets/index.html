@@ -3,27 +3,36 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel UNO Q</title>
+    <title>Painel UNO Q - Detecção de EPIs</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div id="tela-bloqueio" style="display: block;">
+        <span class="icone-bloqueio">🛡️</span>
+        <h1>Detecção de EPIs</h1>
+        <h2>Acesso Restrito ao Painel</h2>
+        <span class="instrucao-bloqueio">Digite sua senha para desbloquear o sistema de monitoramento:</span>
         <input type="text" id="caixa-senha" placeholder="Digite sua senha ...">
         <button id="enviar-senha">Enviar</button>
         <span id="mensagem-erro"></span>
     </div>
 
     <div id="video-camera" style="display: none;">
+        <h1>Sistema de Detecção de EPIs</h1>
+        <span class="subtitulo-camera">● Transmissão e Monitoramento em Tempo Real</span>
+
         <div class="video-container">
             <iframe id="video" width="720" height="480" src="" frameborder="0"></iframe>
             <canvas id="area-risco" width="720" height="460"></canvas>
         </div>
 
         <div id="logs">
+            <h2>Logs do Sistema</h2>
             <button id="limpar-logs">Limpar logs</button>
             <div id="mostrar-logs"></div>
         </div>
 
+        <span class="instrucao-canvas">🖱️ Clique e arraste o mouse sobre o vídeo para demarcar a área de risco</span>
         <button id="limpar-box">Limpar</button>
         <button id="bloquear">Bloquear</button>
     </div>

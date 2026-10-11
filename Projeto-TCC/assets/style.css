@@ -1,8 +1,235 @@
+/* ==========================================================================
+   SISTEMA DE DETECÇÃO DE EPIS - FOLHA DE ESTILOS MODERNA
+   Tons de azul, design limpo industrial e alto contraste
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* --- Reset e Configurações Globais --- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    min-height: 100vh;
+    background-color: #060b14;
+    background-image: 
+        radial-gradient(at 15% 15%, rgba(30, 58, 138, 0.28) 0px, transparent 55%),
+        radial-gradient(at 85% 85%, rgba(14, 116, 144, 0.2) 0px, transparent 55%),
+        radial-gradient(at 50% 50%, #060b14 0px, #030712 100%);
+    background-attachment: fixed;
+    color: #f1f5f9;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+}
+
+/* ==========================================================================
+   TELA DE BLOQUEIO / AUTENTICAÇÃO
+   Centralizada na tela com estética moderna em tons de azul e glassmorphism
+   ========================================================================== */
+#tela-bloqueio {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 440px;
+    background: rgba(13, 23, 42, 0.88);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(59, 130, 246, 0.28);
+    border-radius: 24px;
+    padding: 44px 36px;
+    box-shadow: 
+        0 25px 60px -15px rgba(0, 0, 0, 0.8),
+        0 0 45px rgba(37, 99, 235, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    z-index: 1000;
+    box-sizing: border-box;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+#tela-bloqueio[style*="display: none"] {
+    display: none !important;
+}
+
+#tela-bloqueio .icone-bloqueio {
+    font-size: 2.8rem;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 0 18px rgba(56, 189, 248, 0.45));
+    animation: pulsarSeguranca 3.2s infinite ease-in-out;
+}
+
+@keyframes pulsarSeguranca {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+}
+
+#tela-bloqueio h1 {
+    font-size: 1.65rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    margin-bottom: 4px;
+    background: linear-gradient(135deg, #ffffff 60%, #93c5fd 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+#tela-bloqueio h2 {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: #38bdf8;
+    text-transform: uppercase;
+    letter-spacing: 1.8px;
+    margin-bottom: 14px;
+}
+
+#tela-bloqueio .instrucao-bloqueio {
+    font-size: 0.88rem;
+    color: #94a3b8;
+    margin-bottom: 24px;
+    line-height: 1.45;
+}
+
+/* Campo de Digitação da Senha */
+#caixa-senha {
+    width: 100%;
+    height: 50px;
+    background: rgba(15, 23, 42, 0.85);
+    border: 1.5px solid rgba(59, 130, 246, 0.4);
+    border-radius: 12px;
+    padding: 0 18px;
+    color: #f8fafc;
+    font-size: 1rem;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.25s ease;
+    box-sizing: border-box;
+    margin-bottom: 16px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+    text-align: center;
+    letter-spacing: 1px;
+}
+
+#caixa-senha:focus {
+    border-color: #38bdf8;
+    background: rgba(15, 23, 42, 0.95);
+    box-shadow: 
+        0 0 0 4px rgba(56, 189, 248, 0.2),
+        0 0 20px rgba(56, 189, 248, 0.2);
+}
+
+#caixa-senha::placeholder {
+    color: #64748b;
+    font-size: 0.92rem;
+    letter-spacing: normal;
+}
+
+/* Botão Enviar Senha */
+#enviar-senha {
+    width: 100%;
+    height: 50px;
+    background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+    border: 1px solid rgba(96, 165, 250, 0.35);
+    border-radius: 12px;
+    color: #ffffff;
+    font-size: 1rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    letter-spacing: 0.3px;
+}
+
+#enviar-senha:hover {
+    background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(37, 99, 235, 0.55);
+    border-color: rgba(147, 197, 253, 0.6);
+}
+
+#enviar-senha:active {
+    transform: translateY(1px);
+    box-shadow: 0 3px 12px rgba(37, 99, 235, 0.4);
+}
+
+/* ==========================================================================
+   MENSAGENS DE ERRO (CAIXA FLUTUANTE MODERNA VERMELHA)
+   Aparece no topo central com animação suave e estilo toast
+   ========================================================================== */
+#mensagem-erro {
+    display: none;
+}
+
+#mensagem-erro:not(:empty) {
+    position: fixed;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    background: linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(185, 28, 28, 0.95));
+    color: #ffffff;
+    font-size: 0.95rem;
+    font-weight: 600;
+    padding: 14px 26px;
+    border-radius: 14px;
+    border: 1px solid rgba(254, 202, 202, 0.4);
+    box-shadow: 
+        0 12px 32px -4px rgba(220, 38, 38, 0.6),
+        0 4px 12px rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    z-index: 10000;
+    letter-spacing: 0.3px;
+    animation: toastSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+#mensagem-erro:not(:empty)::before {
+    content: "⚠️";
+    font-size: 1.25rem;
+}
+
+@keyframes toastSlideDown {
+    from {
+        opacity: 0;
+        transform: translate(-50%, -24px) scale(0.94);
+    }
+    to {
+        opacity: 1;
+        transform: translate(-50%, 0) scale(1);
+    }
+}
+
+/* ==========================================================================
+   CONTEÚDO OBRIGATÓRIO: CONTAINER DO VÍDEO E CANVAS
+   (Preservado rigorosamente conforme exigido para a funcionalidade de desenho)
+   ========================================================================== */
 .video-container {
     position: relative;
     width: 720px;
     height: 460px;
     display: inline-block;
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: 
+        0 14px 38px rgba(0, 0, 0, 0.7),
+        0 0 0 1px rgba(59, 130, 246, 0.3);
+    background-color: #020617;
 }
 
 .video-container iframe {
@@ -12,6 +239,7 @@
     width: 100%;
     height: 100%;
     z-index: 1;
+    border: none;
 }
 
 .video-container canvas {
@@ -22,4 +250,301 @@
     height: 100%;
     z-index: 2; /* Fica acima do iframe para receber eventos do mouse */
     cursor: crosshair;
+}
+
+/* ==========================================================================
+   TELA DE VISUALIZAÇÃO DA CÂMERA E DASHBOARD
+   Layout em grid: vídeo no canto superior esquerdo e logs ao lado
+   ========================================================================== */
+#video-camera {
+    display: grid !important;
+    grid-template-columns: 350px 350px minmax(360px, 1fr);
+    grid-template-rows: auto auto 460px auto auto;
+    gap: 16px 20px;
+    max-width: 1420px;
+    margin: 0 auto;
+    padding: 30px;
+    box-sizing: border-box;
+    min-height: 100vh;
+}
+
+#video-camera[style*="display: none"] {
+    display: none !important;
+}
+
+#video-camera h1 {
+    grid-column: 1 / 4;
+    grid-row: 1;
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #ffffff;
+    letter-spacing: -0.5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#video-camera h1::before {
+    content: "📹";
+    font-size: 1.6rem;
+}
+
+#video-camera .subtitulo-camera {
+    grid-column: 1 / 4;
+    grid-row: 2;
+    font-size: 0.92rem;
+    font-weight: 500;
+    color: #38bdf8;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: -6px;
+    margin-bottom: 6px;
+}
+
+/* Posicionamento do Vídeo no Canto Superior Esquerdo */
+.video-container {
+    grid-column: 1 / 3;
+    grid-row: 3;
+}
+
+/* Instrução de Demarcação no Canvas */
+#video-camera .instrucao-canvas {
+    grid-column: 1 / 3;
+    grid-row: 4;
+    font-size: 0.88rem;
+    color: #94a3b8;
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+}
+
+/* Botão Limpar Box de Risco */
+#limpar-box {
+    grid-column: 1;
+    grid-row: 5;
+    height: 46px;
+    background: rgba(245, 158, 11, 0.12);
+    border: 1px solid rgba(245, 158, 11, 0.45);
+    color: #fbbf24;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#limpar-box::before {
+    content: "🧹";
+    font-size: 1rem;
+}
+
+#limpar-box:hover {
+    background: rgba(245, 158, 11, 0.22);
+    border-color: #f59e0b;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 18px rgba(245, 158, 11, 0.25);
+}
+
+#limpar-box:active {
+    transform: translateY(1px);
+}
+
+/* Botão Bloquear Painel */
+#bloquear {
+    grid-column: 2;
+    grid-row: 5;
+    height: 46px;
+    background: rgba(239, 68, 68, 0.12);
+    border: 1px solid rgba(239, 68, 68, 0.45);
+    color: #f87171;
+    border-radius: 10px;
+    font-size: 0.92rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+#bloquear::before {
+    content: "🔒";
+    font-size: 0.95rem;
+}
+
+#bloquear:hover {
+    background: rgba(239, 68, 68, 0.22);
+    border-color: #ef4444;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 18px rgba(239, 68, 68, 0.25);
+}
+
+#bloquear:active {
+    transform: translateY(1px);
+}
+
+/* ==========================================================================
+   JANELA DE LOGS DO SISTEMA (COM SCROLL DE MOUSE)
+   Container lateral ao lado do vídeo com rolagem fluida e estilo terminal
+   ========================================================================== */
+#logs {
+    grid-column: 3;
+    grid-row: 3 / span 3;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto 1fr;
+    gap: 14px;
+    background: rgba(13, 23, 42, 0.85);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    border-radius: 18px;
+    padding: 22px;
+    box-shadow: 0 15px 35px -5px rgba(0, 0, 0, 0.55);
+    box-sizing: border-box;
+    height: 100%;
+}
+
+#logs h2 {
+    grid-column: 1;
+    grid-row: 1;
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 600;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+#logs h2::before {
+    content: "📋";
+    font-size: 1.1rem;
+}
+
+/* Botão Limpar Logs */
+#limpar-logs {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 6px 14px;
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    color: #93c5fd;
+    font-size: 0.82rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+#limpar-logs:hover {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: #38bdf8;
+    color: #ffffff;
+    box-shadow: 0 2px 8px rgba(37, 99, 235, 0.25);
+}
+
+/* Área rolável de logs com suporte completo a scroll pelo mouse */
+#mostrar-logs {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 100%;
+    min-height: 480px;
+    max-height: 520px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    background: #080d1a;
+    border: 1px solid rgba(30, 41, 59, 0.8);
+    border-radius: 10px;
+    padding: 14px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 0.84rem;
+    box-sizing: border-box;
+    scroll-behavior: smooth;
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.55);
+}
+
+/* Estilização da Barra de Rolagem (Scrollbar) */
+#mostrar-logs::-webkit-scrollbar {
+    width: 8px;
+}
+
+#mostrar-logs::-webkit-scrollbar-track {
+    background: rgba(15, 23, 42, 0.7);
+    border-radius: 6px;
+}
+
+#mostrar-logs::-webkit-scrollbar-thumb {
+    background: #1e3a8a;
+    border-radius: 6px;
+    border: 2px solid #080d1a;
+}
+
+#mostrar-logs::-webkit-scrollbar-thumb:hover {
+    background: #2563eb;
+}
+
+/* Estilo de cada item de log emitido pelo sistema */
+.mostrar-logs {
+    display: block;
+    margin-bottom: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    background: rgba(15, 23, 42, 0.7);
+    border-left: 3px solid #38bdf8;
+    color: #e2e8f0;
+    line-height: 1.45;
+    word-break: break-all;
+    transition: background 0.15s ease, transform 0.15s ease;
+    animation: fadeInLog 0.2s ease-out;
+}
+
+.mostrar-logs:hover {
+    background: rgba(30, 41, 59, 0.85);
+    transform: translateX(2px);
+}
+
+@keyframes fadeInLog {
+    from {
+        opacity: 0;
+        transform: translateY(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ==========================================================================
+   RESPONSIVIDADE (Telas menores / Laptops)
+   ========================================================================== */
+@media (max-width: 1200px) {
+    #video-camera {
+        grid-template-columns: 350px 350px;
+        grid-template-rows: auto auto 460px auto auto auto;
+        justify-content: center;
+    }
+
+    #logs {
+        grid-column: 1 / 3;
+        grid-row: 6;
+        height: 380px;
+    }
+
+    #mostrar-logs {
+        max-height: 300px;
+        min-height: 250px;
+    }
 }
