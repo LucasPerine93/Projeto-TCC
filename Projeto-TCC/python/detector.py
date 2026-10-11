@@ -6,7 +6,7 @@ import time
 import math
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
-deteccao = VideoObjectDetection(camera=camera, debounce_sec=0, confidence=0.5, camera_preview=True)
+deteccao = VideoObjectDetection(camera=camera, debounce_sec=0, confidence=0.5, camera_preview=False)
 
 @dataclass
 class Operario:
