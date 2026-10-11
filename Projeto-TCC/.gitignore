@@ -1,0 +1,41 @@
+# --- Segredos / configuração local ---
+.env
+.env.*
+!.env.example
+*.local
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Node / Frontend (Vite) ---
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+
+# --- Dados gerados / runtime ---
+# Logs JSONL e imagens produzidas em execução/testes (não versionar).
+# Evidências de imagem (privadas) ficam fora do Git em qualquer profundidade.
+data/
+**/data/images/
+**/data/*.jsonl
+*.jsonl
+
+# --- SO / editores ---
+.DS_Store
+Thumbs.db
+*.swp
