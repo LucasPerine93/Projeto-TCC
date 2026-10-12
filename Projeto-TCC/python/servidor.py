@@ -33,5 +33,7 @@ ui.on_message('senha', verificar_senha)
 ui.on_message('area_marcada', calcular_area)
 ui.on_message("limpar_box_risco", limpar_box_risco)
 ui.on_message('retornar_box_risco', lambda *args : ui.send_message("box_risco", box_risco))
+
+# O FastAPI entende que {nome_foto} recebe o nome do arquivo da foto
 ui.expose_api("GET", "/foto/{nome_foto}", banco.pegar_foto)
 ui.expose_api("GET", "/listar_ocorrencias", banco.dados_ocorrencias)
