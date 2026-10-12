@@ -23,6 +23,7 @@ def verificar_pendrive(caminho_pendrive: str) -> bool:
 
 def inicializar_banco(caminho_banco: str) -> bool:
 
+    conexao = None
     try:
         conexao = sqlite3.connect(caminho_banco)
         cursor = conexao.cursor()
@@ -58,17 +59,24 @@ def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capace
         caminho_salvar = os.path.join(PASTA_FOTOS, nome_imagem)
         os.makedirs(PASTA_FOTOS, exist_ok=True)
 
+        """ 
+            "wb" | w = como vai salvar a imagem (w: write) cria 
+             um arquvo novo ou sobreescreve o antigo 
+            "wb" | b = modo que o arquivo sera salvo (b: bytes) a 
+             imagem (frame) ja são bytes e esses bytes vão ser salvos no banco
+        """
         with open(caminho_salvar, "wb") as arquivo:
             arquivo.write(frame)
 
+        conexao = None
         try:
             conexao = sqlite3.connect(CAMINHO_BANCO)
             cursor = conexao.cursor()
     
             sql = """
-                INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """
+                    INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                  """
     
             px, py = (posicao_operario[0] + posicao_operario[2]) / 2, (posicao_operario[1] + posicao_operario[3]) / 2
             cursor.execute(sql, (time.strftime("%Y-%m-%dT%H:%M:%S"), tipo_infracao, px, py, conf_pessoa, conf_capacete, conf_colete, caminho_salvar))
@@ -84,16 +92,47 @@ def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capace
 
         print("[SUCESSO]: Imagem salva!")
 
-def listar_fotos():
-    # Verifica se a pasta existe
-    if os.path.exists(PASTA_FOTOS):
-        # Pega os arquivos dentro da pasta
-        return sorted(os.listdir(PASTA_FOTOS), reverse=True) # Envia a lista de fotos da mais recente para a mais antiga
-    return []
-
 def pegar_foto(nome_foto: str):
     caminho_foto = os.path.join(PASTA_FOTOS, os.path.basename(nome_foto))
     if os.path.exists(caminho_foto):
         return FileResponse(caminho_foto, media_type="image/jpeg") # Envia a foto
         
     return "Foto não encontrada"
+
+def dados_ocorrencias():
+    registros = []
+    conexao = None
+    try:
+        conexao = sqlite3.connect(CAMINHO_BANCO)
+
+        # Ativa o mapeamento por nome da coluna
+        # Acessa tanto pelo indice como pelo nome
+        conexao.row_factory = sqlite3.Row
+        cursor = conexao.cursor()
+
+        requisicao = "SELECT id, " \
+                     "timestamp, " \
+                     "tipo_infracao, " \
+                     "posicao_x, " \
+                     "posicao_y, " \
+                     "conf_pessoa, " \
+                     "conf_capacete, " \
+                     "conf_colete, " \
+                     "caminho_foto " \
+                     "FROM ocorrencias " \
+                     "ORDER BY id DESC LIMIT 50"
+        cursor.execute(requisicao)
+
+        # Pega as linhas e converte para dicionarios 
+        linhas = cursor.fetchall()
+        registros = [dict(linha) for linha in linhas]
+        for foto in registros:
+            foto["caminho_foto"] = os.path.basename(foto["caminho_foto"])
+
+    except sqlite3.Error as e:
+        print(f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}")
+    
+    finally:
+        if conexao:
+            conexao.close()
+    return registros

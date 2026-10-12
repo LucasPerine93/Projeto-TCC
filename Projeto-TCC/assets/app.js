@@ -17,6 +17,10 @@ const botaoDashBoard = document.getElementById("botao-dashboard");
 const galeria_fotos = document.getElementById("galeria-fotos");
 const botaoAtualizarFotos = document.getElementById("botao-atualizar");
 const botaoVoltarCamera = document.getElementById("voltar-camera");
+const imagemAmpliada = document.getElementById("foto-ampliada");
+const botaoFecharImagemAmpliada = document.getElementById(
+  "fechar-dados-imagem",
+);
 
 let senhaCorreta = false;
 
@@ -29,42 +33,39 @@ let area_marcada = null;
 let mostrarDashBoard = false;
 
 function mostrarTela() {
+  document.getElementById("tela-bloqueio").style.display = "none";
+  document.getElementById("video-camera").style.display = "none";
+  document.getElementById("capturas-infracoes").style.display = "none";
+
+  if (senhaCorreta) {
     document.getElementById("tela-bloqueio").style.display = "none";
+    document.getElementById("video-camera").style.display = "block";
+    document.getElementById("capturas-infracoes").style.display = "none";
+  } else {
+    document.getElementById("tela-bloqueio").style.display = "block";
     document.getElementById("video-camera").style.display = "none";
     document.getElementById("capturas-infracoes").style.display = "none";
-  
-    if (senhaCorreta) {
-        document.getElementById("tela-bloqueio").style.display = "none";
-        document.getElementById("video-camera").style.display = "block";
-        document.getElementById("capturas-infracoes").style.display = "none";
-    }
-    else {
-        document.getElementById("tela-bloqueio").style.display = "block";
-        document.getElementById("video-camera").style.display = "none";
-        document.getElementById("capturas-infracoes").style.display = "none";
-        campoSenha.focus();
+    campoSenha.focus();
 
-        return;
-    }
+    return;
+  }
 
-    if (mostrarDashBoard) {
-        document.getElementById("tela-bloqueio").style.display = "none";
-        document.getElementById("video-camera").style.display = "none";
-        document.getElementById("capturas-infracoes").style.display = "block";
-
-    }
-    else {
-       document.getElementById("tela-bloqueio").style.display = "none";
-       document.getElementById("video-camera").style.display = "block";
-       document.getElementById("capturas-infracoes").style.display = "none"; 
-    }
+  if (mostrarDashBoard) {
+    document.getElementById("tela-bloqueio").style.display = "none";
+    document.getElementById("video-camera").style.display = "none";
+    document.getElementById("capturas-infracoes").style.display = "block";
+  } else {
+    document.getElementById("tela-bloqueio").style.display = "none";
+    document.getElementById("video-camera").style.display = "block";
+    document.getElementById("capturas-infracoes").style.display = "none";
+  }
 }
 
-botaoSenha.addEventListener('click', () => {
-    const senha = parseInt(campoSenha.value);
-  
-    ui.send_message("senha", {senha});
-    campoSenha.value = "";
+botaoSenha.addEventListener("click", () => {
+  const senha = parseInt(campoSenha.value);
+
+  ui.send_message("senha", { senha });
+  campoSenha.value = "";
 });
 
 campoSenha.addEventListener("keydown", (evento) => {
@@ -80,50 +81,77 @@ ui.on_message("liberado", () => {
 });
 
 ui.on_message("rejeitado", () => {
-    senhaCorreta = false;
-    mostrarTela();
-  
-    mensagemErro.innerText = "Senha incorreta, tente novamente";
-    setTimeout(() => {
-        mensagemErro.innerText = "";
-    }, 2500);
+  senhaCorreta = false;
+  mostrarTela();
+
+  mensagemErro.innerText = "Senha incorreta, tente novamente";
+  setTimeout(() => {
+    mensagemErro.innerText = "";
+  }, 2500);
 });
 
 botaoBloquear.addEventListener("click", () => {
-    senhaCorreta = false;
-    mostrarDashBoard = false;
-    mostrarTela();
+  senhaCorreta = false;
+  mostrarDashBoard = false;
+  mostrarTela();
 });
 
 ui.on_message("log_deteccao", (log) => {
-    const novoLog = document.createElement('span');
-  
-    novoLog.classList.add('mostrar-logs');
-    novoLog.innerText = log + "\n"
-    mostrarLogs.appendChild(novoLog);
+  const novoLog = document.createElement("span");
+
+  novoLog.classList.add("mostrar-logs");
+  novoLog.innerText = log + "\n";
+  mostrarLogs.appendChild(novoLog);
 });
 
 botaoLimparLogs.addEventListener("click", () => {
-    mostrarLogs.innerHTML = "";
+  mostrarLogs.innerHTML = "";
 });
 
 botaoDashBoard.addEventListener("click", () => {
-    mostrarDashBoard = true;
-    carregarFotos();
-    mostrarTela();
+  mostrarDashBoard = true;
+  carregarFotos();
+  mostrarTela();
 });
 
 async function carregarFotos() {
-    const resposta = await fetch("/listar_fotos");
-    const listaDeNomes = await resposta.json();
-    console.log("Nomes: ", listaDeNomes);
-    galeria_fotos.innerHTML = "";
-    listaDeNomes.forEach((nome) => {
-        galeria_fotos.innerHTML += `<img src="/foto/${nome}">`;
+  const resposta_ocorrencias = await fetch("/listar_ocorrencias");
+  const dadosFoto = await resposta_ocorrencias.json();
+
+  galeria_fotos.innerHTML = "";
+
+  dadosFoto.forEach((dado) => {
+    const foto = document.createElement("img");
+    foto.src = `/foto/${dado.caminho_foto}`;
+
+    foto.addEventListener("click", () => {
+      mostrarDetalhesFoto(dado);
     });
+
+    galeria_fotos.appendChild(foto);
+  });
 }
 
 botaoAtualizarFotos.addEventListener("click", carregarFotos);
+
+function mostrarDetalhesFoto(dado) {
+  imagemAmpliada.src = `/foto/${dado.caminho_foto}`;
+
+  document.getElementById("data-infracao").innerText = dado.timestamp;
+  document.getElementById("tipo-infracao").innerText = dado.tipo_infracao;
+  document.getElementById("posicaox-infracao").innerText = dado.posicao_x;
+  document.getElementById("posicaoy-infracao").innerText = dado.posicao_y;
+  document.getElementById("confiancap-infracao").innerText = dado.conf_pessoa;
+  document.getElementById("confiancacp-infracao").innerText =
+    dado.conf_capacete;
+  document.getElementById("confiancacl-infracao").innerText = dado.conf_colete;
+
+  document.getElementById("mostrar-dados-imagem").style.display = "block";
+}
+
+botaoFecharImagemAmpliada.addEventListener("click", () => {
+  document.getElementById("mostrar-dados-imagem").style.display = "none";
+});
 
 botaoVoltarCamera.addEventListener("click", () => {
   mostrarDashBoard = false;
@@ -131,96 +159,95 @@ botaoVoltarCamera.addEventListener("click", () => {
 });
 
 function getMousePos(e) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-        x: e.clientX - rect.left,
-        y: e.clientY - rect.top,
-    };
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+  };
 }
 
 canvas.addEventListener("mousedown", (e) => {
-    const pos = getMousePos(e);
-  
-    comecoX = pos.x;
-    comecoY = pos.y;
-    desenhando = true;
+  const pos = getMousePos(e);
+
+  comecoX = pos.x;
+  comecoY = pos.y;
+  desenhando = true;
 });
 
 canvas.addEventListener("mousemove", (e) => {
-    if (!desenhando) return;
+  if (!desenhando) return;
 
-    const pos = getMousePos(e);
-    const Xatual = pos.x;
-    const Yatual = pos.y;
+  const pos = getMousePos(e);
+  const Xatual = pos.x;
+  const Yatual = pos.y;
 
-    const width = Xatual - comecoX;
-    const height = Yatual - comecoY;
+  const width = Xatual - comecoX;
+  const height = Yatual - comecoY;
 
-    renderizarRetangulo(comecoX, comecoY, width, height);
+  renderizarRetangulo(comecoX, comecoY, width, height);
 });
 
 function renderizarRetangulo(x1, y1, x2, y2) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-  
-    ctx.strokeStyle = "#00FF00";
-    ctx.lineWidth = 2;
-    ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    ctx.fillRect(x1, y1, x2, y2);
-    ctx.strokeRect(x1, y1, x2, y2);
+  ctx.strokeStyle = "#00FF00";
+  ctx.lineWidth = 2;
+  ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+
+  ctx.fillRect(x1, y1, x2, y2);
+  ctx.strokeRect(x1, y1, x2, y2);
 }
 
 canvas.addEventListener("mouseup", (e) => {
-    if (!desenhando) return;
-  
-    desenhando = false;
+  if (!desenhando) return;
 
-    const pos = getMousePos(e);
-    const X_final = pos.x;
-    const Y_final = pos.y;
+  desenhando = false;
 
-    const x1 = Math.round(Math.min(comecoX, X_final));
-    const y1 = Math.round(Math.min(comecoY, Y_final));
-    const x2 = Math.round(Math.max(comecoX, X_final));
-    const y2 = Math.round(Math.max(comecoY, Y_final));
+  const pos = getMousePos(e);
+  const X_final = pos.x;
+  const Y_final = pos.y;
 
-    const width = X_final - comecoX;
-    const height = Y_final - comecoY;
+  const x1 = Math.round(Math.min(comecoX, X_final));
+  const y1 = Math.round(Math.min(comecoY, Y_final));
+  const x2 = Math.round(Math.max(comecoX, X_final));
+  const y2 = Math.round(Math.max(comecoY, Y_final));
 
-    if (width < 5 || height < 5) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        return;
-    }
+  const width = X_final - comecoX;
+  const height = Y_final - comecoY;
 
-    area_marcada = { x1, y1, x2, y2 };
-  
-    ui.send_message("area_marcada", area_marcada);
+  if (width < 5 || height < 5) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
+
+  area_marcada = { x1, y1, x2, y2 };
+
+  ui.send_message("area_marcada", area_marcada);
 });
 
 ui.on_message("box_risco", (data) => {
-    if (!data.length || data.length !== 4) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        return;
-    }
-    
-    const [x1, y1, x2, y2] = data;
-  
-    const comecoX = Math.min(x1, x2);
-    const comecoY = Math.min(y1, y2);
-    const width = Math.abs(x2 - x1);
-    const height = Math.abs(y2 - y1);
+  if (!data.length || data.length !== 4) {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    return;
+  }
 
-    renderizarRetangulo(comecoX, comecoY, width, height);
+  const [x1, y1, x2, y2] = data;
+
+  const comecoX = Math.min(x1, x2);
+  const comecoY = Math.min(y1, y2);
+  const width = Math.abs(x2 - x1);
+  const height = Math.abs(y2 - y1);
+
+  renderizarRetangulo(comecoX, comecoY, width, height);
 });
 
 window.addEventListener("DOMContentLoaded", () => {
   ui.send_message("retornar_box_risco", {});
 });
 
-
 botaoLimpar.addEventListener("click", () => {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    area_marcada = null;
-  
-    ui.send_message("limpar_box_risco", {}); 
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  area_marcada = null;
+
+  ui.send_message("limpar_box_risco", {});
 });

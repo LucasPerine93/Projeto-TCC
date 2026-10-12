@@ -1,57 +1,88 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-br">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Painel UNO Q - Detecção de EPIs</title>
-    <link rel="stylesheet" href="style.css">
-</head>
-<body>
-    <div id="tela-bloqueio" style="display: block;">
-        <span class="icone-bloqueio">🛡️</span>
-        <h1>Detecção de EPIs</h1>
-        <h2>Acesso Restrito ao Painel</h2>
-        <span class="instrucao-bloqueio">Digite sua senha para desbloquear o sistema de monitoramento:</span>
-        <input type="text" id="caixa-senha" placeholder="Digite sua senha ...">
-        <button id="enviar-senha">Enviar</button>
-        <span id="mensagem-erro"></span>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div id="tela-bloqueio" style="display: block">
+      <span class="icone-bloqueio">🛡️</span>
+      <h1>Detecção de EPIs</h1>
+      <h2>Acesso Restrito ao Painel</h2>
+      <span class="instrucao-bloqueio"
+        >Digite sua senha para desbloquear o sistema de monitoramento:</span
+      >
+      <input type="text" id="caixa-senha" placeholder="Digite sua senha ..." />
+      <button id="enviar-senha">Enviar</button>
+      <span id="mensagem-erro"></span>
     </div>
 
-    <div id="video-camera" style="display: none;">
-        <h1>Sistema de Detecção de EPIs</h1>
-        <span class="subtitulo-camera">● Transmissão e Monitoramento em Tempo Real</span>
+    <div id="video-camera" style="display: none">
+      <h1>Sistema de Detecção de EPIs</h1>
+      <span class="subtitulo-camera"
+        >● Transmissão e Monitoramento em Tempo Real</span
+      >
 
-        <div class="video-container">
-            <iframe id="video" width="720" height="480" src="" frameborder="0"></iframe>
-            <canvas id="area-risco" width="720" height="460"></canvas>
-        </div>
+      <div class="video-container">
+        <iframe
+          id="video"
+          width="720"
+          height="480"
+          src=""
+          frameborder="0"
+        ></iframe>
+        <canvas id="area-risco" width="720" height="460"></canvas>
+      </div>
 
-        <div id="logs">
-            <h2>Logs do Sistema</h2>
-            <button id="limpar-logs">Limpar logs</button>
-            <div id="mostrar-logs"></div>
-        </div>
+      <div id="logs">
+        <h2>Logs do Sistema</h2>
+        <button id="limpar-logs">Limpar logs</button>
+        <div id="mostrar-logs"></div>
+      </div>
 
-        <span class="instrucao-canvas">🖱️ Clique e arraste o mouse sobre o vídeo para demarcar a área de risco</span>
-        <button id="limpar-box">Limpar</button>
-        <button id="bloquear">Bloquear</button>
-        <button id="botao-dashboard">DashBoard</button>
+      <span class="instrucao-canvas"
+        >🖱️ Clique e arraste o mouse sobre o vídeo para demarcar a área de
+        risco</span
+      >
+      <button id="limpar-box">Limpar</button>
+      <button id="bloquear">Bloquear</button>
+      <button id="botao-dashboard">DashBoard</button>
     </div>
 
-    <div id="capturas-infracoes" style="display: none;">
-        <h1>Galeria de Infrações de EPIs</h1>
-        <span class="subtitulo-camera">● Registro Fotográfico das Ocorrências Capturadas</span>
+    <div id="capturas-infracoes" style="display: none">
+      <h1>Galeria de Infrações de EPIs</h1>
+      <span class="subtitulo-camera"
+        >● Registro Fotográfico das Ocorrências Capturadas</span
+      >
 
-        <div>
-            <h3>Infrações Capturadas:</h3>
-            <button id="botao-atualizar">Atualizar Fotos</button>
-            <button id="voltar-camera">Voltar</button>
-            <div id="galeria-fotos"></div>
-        </div>
+      <div>
+        <h3>Infrações Capturadas:</h3>
+        <button id="botao-atualizar">Atualizar Fotos</button>
+        <button id="voltar-camera">Voltar</button>
+        <div id="galeria-fotos"></div>
+      </div>
+    </div>
+
+    <div id="mostrar-dados-imagem" style="display: none">
+      <img id="foto-ampliada" src="" alt="Imagem ampliada" />
+      <button id="fechar-dados-imagem">Fechar</button>
+
+      <div>
+        <h3>📊 Detalhes da Ocorrência</h3>
+        <p>Data: <span id="data-infracao"></span></p>
+        <p>Infração: <span id="tipo-infracao"></span></p>
+        <p>Posicao X: <span id="posicaox-infracao"></span></p>
+        <p>Posicao Y: <span id="posicaoy-infracao"></span></p>
+        <p>Confiança pessoa: <span id="confiancap-infracao"></span></p>
+        <p>Confiança capacete: <span id="confiancacp-infracao"></span></p>
+        <p>Confiança colete: <span id="confiancacl-infracao"></span></p>
+      </div>
     </div>
 
     <script src="libs/socket.io.min.js"></script>
     <script src="libs/arduino.js"></script>
     <script src="app.js"></script>
-</body>
+  </body>
 </html>

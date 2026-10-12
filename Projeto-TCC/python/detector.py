@@ -55,7 +55,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
             # Região do topo a 35% do corpo fica o capacete.
             if verificar_epi(box_capacete, operario.box_xyxy, (-0.15, 0.35)):
                 centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(
-                    operario.box_xyxy, box_capacete, 0.10
+                    operario.box_xyxy, box_capacete, 0.10 # Posiciona o centro na testa do operario
                 )
                 dist = calcular_distacia(centro_capacete, centro_cabeca_operario)
                 if dist < menor_distancia:
