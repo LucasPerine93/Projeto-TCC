@@ -13,6 +13,10 @@ const campoSenha = document.getElementById("caixa-senha");
 const mensagemErro = document.getElementById("mensagem-erro");
 const mostrarLogs = document.getElementById("mostrar-logs");
 const botaoLimparLogs = document.getElementById("limpar-logs");
+const botaoDashBoard = document.getElementById("botao-dashboard");
+const galeria_fotos = document.getElementById("galeria-fotos");
+const botaoAtualizarFotos = document.getElementById("botao-atualizar");
+const botaoVoltarCamera = document.getElementById("voltar-camera");
 
 let senhaCorreta = false;
 
@@ -22,24 +26,43 @@ let comecoY = 0;
 
 let area_marcada = null;
 
+let mostrarDashBoard = false;
+
 function mostrarTela() {
     document.getElementById("tela-bloqueio").style.display = "none";
     document.getElementById("video-camera").style.display = "none";
+    document.getElementById("capturas-infracoes").style.display = "none";
   
     if (senhaCorreta) {
         document.getElementById("tela-bloqueio").style.display = "none";
         document.getElementById("video-camera").style.display = "block";
+        document.getElementById("capturas-infracoes").style.display = "none";
     }
     else {
         document.getElementById("tela-bloqueio").style.display = "block";
         document.getElementById("video-camera").style.display = "none";
+        document.getElementById("capturas-infracoes").style.display = "none";
         campoSenha.focus();
+
+        return;
+    }
+
+    if (mostrarDashBoard) {
+        document.getElementById("tela-bloqueio").style.display = "none";
+        document.getElementById("video-camera").style.display = "none";
+        document.getElementById("capturas-infracoes").style.display = "block";
+
+    }
+    else {
+       document.getElementById("tela-bloqueio").style.display = "none";
+       document.getElementById("video-camera").style.display = "block";
+       document.getElementById("capturas-infracoes").style.display = "none"; 
     }
 }
 
 botaoSenha.addEventListener('click', () => {
     const senha = parseInt(campoSenha.value);
-
+  
     ui.send_message("senha", {senha});
     campoSenha.value = "";
 });
@@ -52,6 +75,7 @@ campoSenha.addEventListener("keydown", (evento) => {
 
 ui.on_message("liberado", () => {
   senhaCorreta = true;
+  carregarFotos();
   mostrarTela();
 });
 
@@ -67,15 +91,15 @@ ui.on_message("rejeitado", () => {
 
 botaoBloquear.addEventListener("click", () => {
     senhaCorreta = false;
+    mostrarDashBoard = false;
     mostrarTela();
 });
 
 ui.on_message("log_deteccao", (log) => {
     const novoLog = document.createElement('span');
-
+  
     novoLog.classList.add('mostrar-logs');
     novoLog.innerText = log + "\n"
-
     mostrarLogs.appendChild(novoLog);
 });
 
@@ -83,6 +107,28 @@ botaoLimparLogs.addEventListener("click", () => {
     mostrarLogs.innerHTML = "";
 });
 
+botaoDashBoard.addEventListener("click", () => {
+    mostrarDashBoard = true;
+    carregarFotos();
+    mostrarTela();
+});
+
+async function carregarFotos() {
+    const resposta = await fetch("/listar_fotos");
+    const listaDeNomes = await resposta.json();
+    console.log("Nomes: ", listaDeNomes);
+    galeria_fotos.innerHTML = "";
+    listaDeNomes.forEach((nome) => {
+        galeria_fotos.innerHTML += `<img src="/foto/${nome}">`;
+    });
+}
+
+botaoAtualizarFotos.addEventListener("click", carregarFotos);
+
+botaoVoltarCamera.addEventListener("click", () => {
+  mostrarDashBoard = false;
+  mostrarTela();
+});
 
 function getMousePos(e) {
     const rect = canvas.getBoundingClientRect();

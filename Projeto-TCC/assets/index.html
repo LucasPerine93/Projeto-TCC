@@ -35,6 +35,19 @@
         <span class="instrucao-canvas">🖱️ Clique e arraste o mouse sobre o vídeo para demarcar a área de risco</span>
         <button id="limpar-box">Limpar</button>
         <button id="bloquear">Bloquear</button>
+        <button id="botao-dashboard">DashBoard</button>
+    </div>
+
+    <div id="capturas-infracoes" style="display: none;">
+        <h1>Galeria de Infrações de EPIs</h1>
+        <span class="subtitulo-camera">● Registro Fotográfico das Ocorrências Capturadas</span>
+
+        <div>
+            <h3>Infrações Capturadas:</h3>
+            <button id="botao-atualizar">Atualizar Fotos</button>
+            <button id="voltar-camera">Voltar</button>
+            <div id="galeria-fotos"></div>
+        </div>
     </div>
 
     <script src="libs/socket.io.min.js"></script>
