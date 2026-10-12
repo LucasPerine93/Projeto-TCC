@@ -18,9 +18,7 @@ const galeria_fotos = document.getElementById("galeria-fotos");
 const botaoAtualizarFotos = document.getElementById("botao-atualizar");
 const botaoVoltarCamera = document.getElementById("voltar-camera");
 const imagemAmpliada = document.getElementById("foto-ampliada");
-const botaoFecharImagemAmpliada = document.getElementById(
-  "fechar-dados-imagem",
-);
+const botaoFecharImagemAmpliada = document.getElementById("fechar-dados-imagem");
 
 let senhaCorreta = false;
 
@@ -142,8 +140,7 @@ function mostrarDetalhesFoto(dado) {
   document.getElementById("posicaox-infracao").innerText = dado.posicao_x;
   document.getElementById("posicaoy-infracao").innerText = dado.posicao_y;
   document.getElementById("confiancap-infracao").innerText = dado.conf_pessoa;
-  document.getElementById("confiancacp-infracao").innerText =
-    dado.conf_capacete;
+  document.getElementById("confiancacp-infracao").innerText = dado.conf_capacete;
   document.getElementById("confiancacl-infracao").innerText = dado.conf_colete;
 
   document.getElementById("mostrar-dados-imagem").style.display = "block";
