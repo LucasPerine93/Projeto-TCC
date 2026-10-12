@@ -27,8 +27,11 @@ def verificar_pendrive(caminho_pendrive: str) -> bool:
 
 
 def inicializar_banco(caminho_banco: str) -> bool:
-
-    conexao = None
+    """ Cria a conexão como None antes do try para não 
+        dar erro fatal no finally 
+        se a conexão não for estabelecida """
+    
+    conexao = None 
     try:
         conexao = sqlite3.connect(caminho_banco)
         cursor = conexao.cursor()
@@ -134,13 +137,19 @@ def dados_ocorrencias():
                      "caminho_foto " \
                      "FROM ocorrencias " \
                      "ORDER BY id DESC LIMIT 50"
+        
         cursor.execute(requisicao)
 
         # Pega as linhas e converte para dicionarios 
         linhas = cursor.fetchall()
         registros = [dict(linha) for linha in linhas]
+        
         for foto in registros:
-            foto["caminho_foto"] = os.path.basename(foto["caminho_foto"])
+            """ Ao invés do caminho bruto da foto, pega só o nome do 
+                arquivo para a interface web conseguir fazer o GET na
+                função pegar foto """
+            
+            foto["caminho_foto"] = os.path.basename(foto["caminho_foto"]) 
 
     except sqlite3.Error as e:
         mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
