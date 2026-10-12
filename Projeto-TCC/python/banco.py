@@ -1,4 +1,5 @@
 from fastapi.responses import FileResponse
+import servidor
 import sqlite3
 import time
 import os
@@ -14,10 +15,14 @@ PASTA_FOTOS = os.path.join(CAMINHO_PENDRIVE, "evidencias")
 
 def verificar_pendrive(caminho_pendrive: str) -> bool:
     if os.path.ismount(caminho_pendrive):
-        print("[SUCESSO]: Pendrive montado e pronto")
+        mensagem = "[SUCESSO]: Pendrive montado e pronto"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
         return True
     else:
-        print("[ERRO]: Pendrive não encontrado")
+        mensagem = "[ERRO]: Pendrive não encontrado"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
         return False
 
 
@@ -42,11 +47,15 @@ def inicializar_banco(caminho_banco: str) -> bool:
             )
         """)
         conexao.commit()
-        print("[BANCO]: Tabela de ocorrências pronta!")
+        mensagem = "[BANCO]: Tabela de ocorrências pronta!"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
         return True
     
     except sqlite3.Error as e:
-        print(f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}")
+        mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
         return False
     
     finally:
@@ -84,13 +93,17 @@ def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capace
             conexao.commit()
             
         except sqlite3.Error as e:
-            print(f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}")
+            mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
+            print(mensagem)
+            servidor.enviar_log(mensagem)
 
         finally:
             if conexao:
                 conexao.close()
 
-        print("[SUCESSO]: Imagem salva!")
+        mensagem = "[SUCESSO]: Imagem salva!"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
 
 def pegar_foto(nome_foto: str):
     caminho_foto = os.path.join(PASTA_FOTOS, os.path.basename(nome_foto))
@@ -130,7 +143,9 @@ def dados_ocorrencias():
             foto["caminho_foto"] = os.path.basename(foto["caminho_foto"])
 
     except sqlite3.Error as e:
-        print(f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}")
+        mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
     
     finally:
         if conexao:
