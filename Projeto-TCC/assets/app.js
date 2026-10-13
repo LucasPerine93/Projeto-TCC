@@ -393,24 +393,13 @@ function interpretarCaixas(ocorrencia) {
 }
 
 function criarCaixaDeteccao(rotulo, caixa, confianca, classeCss) {
-  // Cria o retângulo posicionado em % para acompanhar o redimensionamento.
-  const [x1, y1, x2, y2] = caixa;
-  const esquerda = Math.max(0, Math.min(x1, x2));
-  const topo = Math.max(0, Math.min(y1, y2));
-  const largura = Math.abs(x2 - x1);
-  const altura = Math.abs(y2 - y1);
+  // Cria o retângulo. O posicionamento (% da imagem renderida) é feito
+  // posteriormente em atualizarCaixas(), quando a imagem já tem dimensões.
   const elemento = document.createElement("div");
   elemento.className = `caixa-deteccao ${classeCss || ""}`.trim();
-  elemento.style.left = `${(esquerda / LARGURA_FRAME) * 100}%`;
-  elemento.style.top = `${(topo / ALTURA_FRAME) * 100}%`;
-  elemento.style.width = `${(largura / LARGURA_FRAME) * 100}%`;
-  elemento.style.height = `${(altura / ALTURA_FRAME) * 100}%`;
+  elemento.dataset.caixa = JSON.stringify(caixa);
   const etiqueta = document.createElement("span");
   etiqueta.className = "caixa-deteccao-rotulo";
-  // Caixa encostada no topo: etiqueta dentro, para não ser cortada.
-  if (topo < ALTURA_FRAME * 0.10) {
-    etiqueta.style.top = "2px";
-  }
   const textoConfianca =
     confianca === null || confianca === undefined || Number.isNaN(Number(confianca))
       ? ""
@@ -419,6 +408,45 @@ function criarCaixaDeteccao(rotulo, caixa, confianca, classeCss) {
   elemento.appendChild(etiqueta);
   return elemento;
 }
+
+function atualizarCaixas(container) {
+  // Reposiciona as caixas em % com base na resolução REAL da imagem
+  // (naturalWidth/naturalHeight) e no tamanho renderido na tela
+  // (clientWidth/clientHeight da moldura), incluindo as barras laterais do
+  // object-fit: contain. Assim, qualquer redimensionamento (modal, janela,
+  // responsivo) mantém as caixas exatamente sobre os objetos da foto.
+  if (!container) return;
+  const img = container.querySelector("img");
+  if (!img || !img.naturalWidth) return;
+  const cliW = container.clientWidth;
+  const cliH = container.clientHeight;
+  if (!cliW || !cliH) return;
+
+  // Área efetiva da imagem dentro da moldura (contain = escala uniforme).
+  const escala = Math.min(cliW / img.naturalWidth, cliH / img.naturalHeight);
+  const offX = (cliW - img.naturalWidth * escala) / 2;
+  const offY = (cliH - img.naturalHeight * escala) / 2;
+
+  // As caixas vêm em pixels do frame da câmera; converte frame -> imagem
+  // natural -> pixels renderidos, e por fim em % do container.
+  const convX = (img.naturalWidth / LARGURA_FRAME) * escala;
+  const convY = (img.naturalHeight / ALTURA_FRAME) * escala;
+
+  container.querySelectorAll(".caixa-deteccao").forEach((el) => {
+    const caixa = JSON.parse(el.dataset.caixa || "null");
+    if (!Array.isArray(caixa) || caixa.length !== 4) return;
+    const [x1, y1, x2, y2] = caixa.map(Number);
+    const esquerda = Math.min(x1, x2);
+    const topo = Math.min(y1, y2);
+    el.style.left = `${((offX + esquerda * convX) / cliW) * 100}%`;
+    el.style.top = `${((offY + topo * convY) / cliH) * 100}%`;
+    el.style.width = `${(Math.abs(x2 - x1) * convX * 100) / cliW}%`;
+    el.style.height = `${(Math.abs(y2 - y1) * convY * 100) / cliH}%`;
+  });
+}
+
+// Um único ResizeObserver por moldura, para reposicionar ao redimensionar.
+const observadoresCaixas = new WeakMap();
 
 function desenharCaixas(container, ocorrencia) {
   // Desenha as caixas da pessoa/capacete/colete sobre a imagem exibida.
@@ -435,6 +463,20 @@ function desenharCaixas(container, ocorrencia) {
     if (!caixa) return;
     container.appendChild(criarCaixaDeteccao(rotulo, caixa, confianca, classe));
   });
+
+  // Posiciona quando a imagem estiver decodificada (naturalWidth disponível).
+  const img = container.querySelector("img");
+  if (img && !img.complete) {
+    img.addEventListener("load", () => atualizarCaixas(container), { once: true });
+  }
+  atualizarCaixas(container);
+
+  // Acompanha qualquer redimensionamento da moldura (modal/janela/responsivo).
+  if (!observadoresCaixas.has(container) && typeof ResizeObserver !== "undefined") {
+    const observador = new ResizeObserver(() => atualizarCaixas(container));
+    observador.observe(container);
+    observadoresCaixas.set(container, observador);
+  }
 }
 
 // Fecha o modal de detalhes ao clicar no fundo escurecido (overlay).
