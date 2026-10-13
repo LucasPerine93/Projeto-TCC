@@ -2,9 +2,12 @@ import { mostrarTela, estado } from "./app.js";
 
 // Guarda a instância do gráfico para poder destruí-la antes de recriar.
 let graficoConformidade = null;
+let ocorrenciasAtuais = [];
 
 const botaoAtualizarPainel = document.getElementById("botao-atualizar-painel");
 const botaoVoltarPainel = document.getElementById("voltar-painel");
+const botaoExportarCsv = document.getElementById("botao-exportar-csv");
+const avisoExportacaoCsv = document.getElementById("aviso-exportacao-csv");
 
 
 export async function carregarDashboard() {
@@ -21,6 +24,8 @@ export async function carregarDashboard() {
     document.getElementById("kpi-tipos").innerText = "--";
     return;
   }
+
+  ocorrenciasAtuais = Array.isArray(dados.eventos_recentes) ? dados.eventos_recentes : [];
 
   // --- KPIs ---
   document.getElementById("kpi-total").innerText = dados.total_observacoes;
@@ -51,48 +56,65 @@ export async function carregarDashboard() {
 
   if (graficoConformidade) {
     graficoConformidade.destroy();
+    graficoConformidade = null;
   }
 
-  graficoConformidade = new Chart(
-    document.getElementById("grafico-conformidade"),
-    {
-      type: "doughnut",
-      data: {
-        labels: rotulos,
-        datasets: [
-          {
-            data: valores,
-            backgroundColor: [
-              "#38bdf8",
-              "#f87171",
-              "#fbbf24",
-              "#4ade80",
-              "#a78bfa",
-              "#fb923c",
-            ],
-            borderColor: "rgba(13, 23, 42, 0.9)",
-            borderWidth: 2,
-          },
-        ],
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: {
-            position: "bottom",
-            labels: { color: "#e2e8f0" },
+  const avisoVazio = document.getElementById("grafico-vazio");
+  const canvasGrafico = document.getElementById("grafico-conformidade");
+
+  // Estado vazio: sem dados, exibe mensagem discreta em vez do donut vazio.
+  if (rotulos.length === 0) {
+    canvasGrafico.hidden = true;
+    avisoVazio.hidden = false;
+  } else {
+    canvasGrafico.hidden = false;
+    avisoVazio.hidden = true;
+
+    graficoConformidade = new Chart(
+      document.getElementById("grafico-conformidade"),
+      {
+        type: "doughnut",
+        data: {
+          labels: rotulos,
+          datasets: [
+            {
+              data: valores,
+              backgroundColor: [
+                "#38bdf8",
+                "#f87171",
+                "#fbbf24",
+                "#4ade80",
+                "#a78bfa",
+                "#fb923c",
+              ],
+              borderColor: "rgba(13, 23, 42, 0.9)",
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              position: "bottom",
+              labels: { color: "#e2e8f0" },
+            },
           },
         },
       },
-    },
-  );
+    );
+  }
 
   // --- Tabela de eventos recentes ---
   const corpoTabela = document.getElementById("tabela-eventos-corpo");
   corpoTabela.innerHTML = "";
 
-  dados.eventos_recentes.forEach((evento) => {
+  ocorrenciasAtuais.forEach((evento) => {
     const linha = document.createElement("tr");
+    linha.className = "linha-evento-clicavel";
+    linha.tabIndex = 0;
+    linha.setAttribute("role", "button");
+    linha.setAttribute("aria-label", `Abrir detalhes da ocorrência ${evento.id}`);
 
     const dataFormatada = new Date(evento.timestamp).toLocaleString("pt-BR");
 
@@ -104,8 +126,75 @@ export async function carregarDashboard() {
       <td>${evento.conf_pessoa?.toFixed(2) ?? "--"}</td>
     `;
 
+    const abrirDetalhes = () => {
+      // Importação dinâmica evita acoplamento circular entre Dashboard e Galeria.
+      import("./tela_galeria.js").then(({ abrirDetalhesOcorrencia }) => {
+        abrirDetalhesOcorrencia(evento);
+      });
+    };
+    linha.addEventListener("click", abrirDetalhes);
+    linha.addEventListener("keydown", (tecla) => {
+      if (tecla.key === "Enter" || tecla.key === " ") {
+        tecla.preventDefault();
+        abrirDetalhes();
+      }
+    });
+
     corpoTabela.appendChild(linha);
   });
+}
+
+function escaparCsv(valor) {
+  const texto = valor === null || valor === undefined ? "" : String(valor);
+  return `"${texto.replaceAll('"', '""')}"`;
+}
+
+function formatarPercentualCsv(valor) {
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? (numero * 100).toFixed(2) : "";
+}
+
+function mostrarAvisoExportacao(mensagem) {
+  avisoExportacaoCsv.innerText = mensagem;
+  avisoExportacaoCsv.hidden = false;
+  window.clearTimeout(mostrarAvisoExportacao.tempo);
+  mostrarAvisoExportacao.tempo = window.setTimeout(() => {
+    avisoExportacaoCsv.hidden = true;
+  }, 3500);
+}
+
+function exportarCsv() {
+  if (ocorrenciasAtuais.length === 0) {
+    mostrarAvisoExportacao("Não há ocorrências disponíveis para exportação.");
+    return;
+  }
+
+  const cabecalho = [
+    "ID", "Data/Hora", "Tipo de Infração", "Posição X", "Posição Y",
+    "Confiança Pessoa (%)", "Confiança Capacete (%)", "Confiança Colete (%)", "Arquivo da Foto",
+  ];
+  const linhas = ocorrenciasAtuais.map((evento) => [
+    evento.id,
+    evento.timestamp ? new Date(evento.timestamp).toLocaleString("pt-BR") : "",
+    evento.tipo_infracao,
+    evento.posicao_x ?? "",
+    evento.posicao_y ?? "",
+    formatarPercentualCsv(evento.conf_pessoa),
+    formatarPercentualCsv(evento.conf_capacete),
+    formatarPercentualCsv(evento.conf_colete),
+    evento.caminho_foto,
+  ].map(escaparCsv).join(";"));
+
+  const csv = `\uFEFF${cabecalho.map(escaparCsv).join(";")}\r\n${linhas.join("\r\n")}`;
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "relatorio_conformidade_epis.csv";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  mostrarAvisoExportacao("Relatório CSV exportado com sucesso.");
 }
 
 // Aplica o valor textual e preenche a barra de progresso com cor por faixa.
@@ -141,3 +230,4 @@ botaoVoltarPainel.addEventListener("click", () => {
 });
 
 botaoAtualizarPainel.addEventListener("click", carregarDashboard);
+botaoExportarCsv.addEventListener("click", exportarCsv);

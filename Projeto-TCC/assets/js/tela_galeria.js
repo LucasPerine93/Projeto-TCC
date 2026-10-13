@@ -6,6 +6,13 @@ const botaoAtualizarFotos = document.getElementById("botao-atualizar");
 const botaoVoltarCamera = document.getElementById("voltar-camera");
 const imagemAmpliada = document.getElementById("foto-ampliada");
 const botaoFecharImagemAmpliada = document.getElementById("fechar-dados-imagem");
+const botaoDescartarOcorrencia = document.getElementById("descartar-ocorrencia");
+const textoDescartarOcorrencia = document.getElementById("texto-descartar-ocorrencia");
+const botoesFiltro = [...document.querySelectorAll(".filtro-galeria")];
+
+let ocorrenciasGaleria = [];
+let filtroAtivo = "Todas";
+let ocorrenciaAberta = null;
 
 
 export async function carregarFotos() {
@@ -25,9 +32,37 @@ export async function carregarFotos() {
     return;
   }
 
-  galeria_fotos.innerHTML = "";
+  ocorrenciasGaleria = Array.isArray(dadosFoto) ? dadosFoto : [];
+  atualizarContadoresFiltros();
+  renderizarGaleria();
+}
 
-  dadosFoto.forEach((dado) => {
+function atualizarContadoresFiltros() {
+  botoesFiltro.forEach((botao) => {
+    const filtro = botao.dataset.filtro;
+    const total = filtro === "Todas"
+      ? ocorrenciasGaleria.length
+      : ocorrenciasGaleria.filter((dado) => dado.tipo_infracao === filtro).length;
+    const contador = botao.querySelector("[data-contador-filtro]");
+    if (contador) contador.innerText = total;
+  });
+}
+
+function renderizarGaleria() {
+  galeria_fotos.innerHTML = "";
+  const ocorrenciasFiltradas = filtroAtivo === "Todas"
+    ? ocorrenciasGaleria
+    : ocorrenciasGaleria.filter((dado) => dado.tipo_infracao === filtroAtivo);
+
+  if (ocorrenciasFiltradas.length === 0 && ocorrenciasGaleria.length > 0) {
+    const vazio = document.createElement("p");
+    vazio.className = "estado-vazio-galeria";
+    vazio.innerText = "Nenhuma ocorrência encontrada para este filtro.";
+    galeria_fotos.appendChild(vazio);
+    return;
+  }
+
+  ocorrenciasFiltradas.forEach((dado) => {
     // Cartão moderno (mesmo padrão visual do painel analítico).
     const card = document.createElement("figure");
     card.className = "foto-card";
@@ -71,7 +106,7 @@ export async function carregarFotos() {
 
     // Abre o modal de detalhes ao clicar em qualquer parte do cartão.
     card.addEventListener("click", () => {
-      mostrarDetalhesFoto(dado);
+      abrirDetalhesOcorrencia(dado);
     });
 
     galeria_fotos.appendChild(card);
@@ -79,6 +114,13 @@ export async function carregarFotos() {
 }
 
 botaoAtualizarFotos.addEventListener("click", carregarFotos);
+botoesFiltro.forEach((botao) => {
+  botao.addEventListener("click", () => {
+    filtroAtivo = botao.dataset.filtro;
+    botoesFiltro.forEach((item) => item.classList.toggle("ativo", item === botao));
+    renderizarGaleria();
+  });
+});
 
 
 /* ==========================================================================
@@ -200,7 +242,9 @@ function desenharCaixas(container, ocorrencia) {
 }
 
 
-function mostrarDetalhesFoto(dado) {
+export function abrirDetalhesOcorrencia(dado) {
+  if (!dado) return;
+  ocorrenciaAberta = dado;
   imagemAmpliada.src = `/foto/${dado.caminho_foto}`;
   desenharCaixas(document.getElementById("foto-moldura"), dado);
 
@@ -230,7 +274,38 @@ function mostrarDetalhesFoto(dado) {
     dado.conf_colete,
   );
 
+  botaoDescartarOcorrencia.hidden = !dado.id;
   document.getElementById("mostrar-dados-imagem").style.display = "block";
+}
+
+async function descartarOcorrenciaAberta() {
+  if (!ocorrenciaAberta?.id) return;
+  if (!window.confirm("Descartar esta ocorrência? A foto de evidência também será removida.")) return;
+
+  botaoDescartarOcorrencia.disabled = true;
+  const textoOriginal = textoDescartarOcorrencia.innerText;
+  textoDescartarOcorrencia.innerText = "Descartando...";
+  try {
+    const resposta = await fetch(`/excluir_ocorrencia/${encodeURIComponent(ocorrenciaAberta.id)}`, {
+      method: "POST",
+    });
+    const resultado = await resposta.json().catch(() => ({}));
+    if (!resposta.ok || !resultado.sucesso) {
+      throw new Error(resultado.mensagem || "Não foi possível descartar a ocorrência.");
+    }
+
+    document.getElementById("mostrar-dados-imagem").style.display = "none";
+    ocorrenciaAberta = null;
+    await carregarFotos();
+    const { carregarDashboard } = await import("./tela_dashboard.js");
+    await carregarDashboard();
+  } catch (erro) {
+    console.error("Erro ao descartar ocorrência:", erro);
+    window.alert(erro.message || "Não foi possível descartar a ocorrência.");
+  } finally {
+    botaoDescartarOcorrencia.disabled = false;
+    textoDescartarOcorrencia.innerText = textoOriginal;
+  }
 }
 
 // Fecha o modal de detalhes ao clicar no fundo escurecido (overlay).
@@ -243,6 +318,8 @@ document.getElementById("mostrar-dados-imagem").addEventListener("click", (e) =>
 botaoFecharImagemAmpliada.addEventListener("click", () => {
   document.getElementById("mostrar-dados-imagem").style.display = "none";
 });
+
+botaoDescartarOcorrencia.addEventListener("click", descartarOcorrenciaAberta);
 
 botaoVoltarCamera.addEventListener("click", () => {
   estado.telaAtual = "camera";

@@ -430,6 +430,15 @@ h1 .ic {
   background-color: #020617;
 }
 
+@keyframes pulsarAlertaInfracao {
+  0%, 100% { box-shadow: 0 14px 38px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.95), 0 0 34px 8px rgba(239, 68, 68, 0.7); }
+}
+
+.video-container.alerta-infracao-visual {
+  animation: pulsarAlertaInfracao 0.4s ease-in-out 3;
+}
+
 .video-container iframe {
   position: absolute;
   top: 0;
@@ -448,6 +457,41 @@ h1 .ic {
   height: 100%;
   z-index: 2; /* Fica acima do iframe para receber eventos do mouse */
   cursor: crosshair;
+}
+
+/* Placeholder elegante exibido enquanto a câmera não transmite (ou falha).
+   Paleta azul-marinho do próprio site, sem o erro padrão do navegador. */
+.camera-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 1; /* Acima do iframe, abaixo do canvas de desenho */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  text-align: center;
+  padding: 20px;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(37, 99, 235, 0.16), transparent 62%),
+    linear-gradient(160deg, #0b1428 0%, #050913 100%);
+  color: #64748b;
+  pointer-events: none;
+}
+
+.camera-placeholder-icone {
+  width: 52px;
+  height: 52px;
+  color: #2563eb;
+  opacity: 0.85;
+  filter: drop-shadow(0 0 14px rgba(37, 99, 235, 0.45));
+}
+
+.camera-placeholder p {
+  margin: 0;
+  font-size: 0.95rem;
+  font-style: italic;
+  letter-spacing: 0.2px;
 }
 
 /* Instrução de Demarcação no Canvas */
@@ -486,9 +530,8 @@ h1 .ic {
 #logs {
   grid-column: 4;
   grid-row: 3 / span 3;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-rows: auto 1fr;
+  display: flex;
+  flex-direction: column;
   gap: 14px;
   background: rgba(13, 23, 42, 0.85);
   backdrop-filter: blur(14px);
@@ -500,9 +543,23 @@ h1 .ic {
   height: 100%;
 }
 
+/* Cabeçalho dos logs: título à esquerda e ações agrupadas à direita. */
+.logs-cabecalho {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Agrupa os botões "Alerta sonoro" e "Limpar logs" lado a lado. */
+.logs-acoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 #logs h2 {
-  grid-column: 1;
-  grid-row: 1;
   font-size: 1.15rem;
   font-weight: 600;
   color: #f8fafc;
@@ -511,15 +568,15 @@ h1 .ic {
   gap: 8px;
 }
 
-#limpar-logs {
-  grid-column: 2;
-  grid-row: 1;
+#toggle-alerta-sonoro.alerta-sonoro-ativo {
+  color: #dcfce7;
+  border-color: rgba(74, 222, 128, 0.7);
+  background: rgba(22, 101, 52, 0.45);
 }
 
 /* Área rolável de logs com suporte completo a scroll pelo mouse */
 #mostrar-logs {
-  grid-column: 1 / -1;
-  grid-row: 2;
+  flex: 1;
   height: 100%;
   min-height: 480px;
   max-height: 520px;
@@ -622,7 +679,7 @@ h1 .ic {
 .galeria {
   display: grid;
   grid-template-columns: 1fr auto auto;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto 1fr;
   gap: 20px 14px;
   align-items: center;
   backdrop-filter: blur(18px);
@@ -651,10 +708,52 @@ h1 .ic {
   grid-row: 1;
 }
 
+.galeria-filtros {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.filtro-galeria {
+  border: 1px solid rgba(96, 165, 250, 0.28);
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.7);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.filtro-galeria:hover,
+.filtro-galeria.ativo {
+  color: #eff6ff;
+  border-color: #38bdf8;
+  background: rgba(14, 116, 144, 0.38);
+  box-shadow: 0 0 14px rgba(56, 189, 248, 0.18);
+}
+
+.filtro-galeria span {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  margin-left: 4px;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #bae6fd;
+  background: rgba(2, 6, 23, 0.48);
+  font-size: 0.72rem;
+}
+
 /* Caixa com Scroll para Exibição das Fotos */
 #galeria-fotos {
   grid-column: 1 / -1;
-  grid-row: 2;
+  grid-row: 3;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   grid-auto-rows: 290px; /* Garante que cada linha tenha 290px */
@@ -670,6 +769,16 @@ h1 .ic {
   overflow-x: hidden;
   scroll-behavior: smooth;
   box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.65);
+}
+
+.estado-vazio-galeria {
+  grid-column: 1 / -1;
+  align-self: center;
+  margin: 0;
+  padding: 28px;
+  color: #94a3b8;
+  font-style: italic;
+  text-align: center;
 }
 
 /* Mensagem de Galeria Vazia */
@@ -1055,6 +1164,12 @@ h1 .ic {
   background: rgba(30, 41, 59, 0.7);
 }
 
+#tabela-eventos .linha-evento-clicavel { cursor: pointer; }
+#tabela-eventos .linha-evento-clicavel:focus-visible td {
+  outline: 2px solid #38bdf8;
+  outline-offset: -2px;
+}
+
 #tabela-eventos tbody tr:last-child td,
 #tabela-eventos-corpo tr:last-child td {
   border-bottom: none;
@@ -1062,12 +1177,22 @@ h1 .ic {
 
 /* Mensagem de estado vazio caso a tabela não tenha eventos */
 #tabela-eventos-corpo:empty::after {
-  content: "Nenhum evento registrado no momento.";
+  content: "Nenhum evento registrado no momento";
   display: table-caption;
   caption-side: bottom;
   padding: 30px 14px;
   color: #64748b;
   font-size: 0.9rem;
+  font-style: italic;
+  text-align: center;
+}
+
+/* Estado vazio genérico dos blocos do painel (ex.: gráfico sem dados) */
+.estado-vazio {
+  margin: 0;
+  padding: 34px 14px;
+  color: #64748b;
+  font-size: 0.92rem;
   font-style: italic;
   text-align: center;
 }
@@ -1093,14 +1218,28 @@ h1 .ic {
   background: #2563eb;
 }
 
-/* --- Rodapé de ações do painel --- */
+/* --- Cabeçalho do painel: título à esquerda, ações à direita --- */
+#dashboard .dashboard-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
 #dashboard .painel-acoes {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
-  margin-top: 22px;
+}
+
+.aviso-discreto {
+  margin: 8px 0 16px;
+  color: #bae6fd;
+  font-size: 0.86rem;
 }
 
 /* ==========================================================================
@@ -1139,6 +1278,12 @@ h1 .ic {
 
 #mostrar-dados-imagem[style*="display: none"] {
   display: none !important;
+}
+
+#descartar-ocorrencia {
+  position: absolute;
+  top: 24px;
+  right: 112px;
 }
 
 /* Animação suave para a janela aparecer */
@@ -1374,7 +1519,7 @@ h1 .ic {
   /* Galeria: botões descem para a linha abaixo do título */
   .galeria {
     grid-template-columns: 1fr auto;
-    grid-template-rows: auto auto 1fr;
+    grid-template-rows: auto auto auto 1fr;
   }
 
   .galeria h2 {
@@ -1388,6 +1533,11 @@ h1 .ic {
     justify-self: start;
   }
 
+  .galeria-filtros {
+    grid-column: 1 / -1;
+    grid-row: 3;
+  }
+
   #voltar-camera {
     grid-column: 2;
     grid-row: 2;
@@ -1396,7 +1546,7 @@ h1 .ic {
 
   #galeria-fotos {
     grid-column: 1 / -1;
-    grid-row: 3;
+    grid-row: 4;
   }
 
   /* Painel analítico */

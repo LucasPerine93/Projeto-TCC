@@ -38,3 +38,4 @@ ui.on_message('retornar_box_risco', lambda *args : ui.send_message("box_risco", 
 ui.expose_api("GET", "/foto/{nome_foto}", banco.pegar_foto)
 ui.expose_api("GET", "/listar_ocorrencias", banco.dados_ocorrencias)
 ui.expose_api("GET", "/dashboard_dados", banco.calcular_dados_dashboard)
+ui.expose_api("POST", "/excluir_ocorrencia/{ocorrencia_id}", banco.excluir_ocorrencia)

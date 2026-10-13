@@ -149,6 +149,60 @@ def pegar_foto(nome_foto: str):
         
     return "Foto não encontrada"
 
+
+def excluir_ocorrencia(ocorrencia_id):
+    """Exclui uma ocorrência e sua evidência fotográfica de forma segura.
+
+    A foto é removida somente de ``PASTA_FOTOS`` e somente após o commit da
+    exclusão no SQLite. O retorno é serializável para a rota HTTP do WebUI.
+    """
+    try:
+        ocorrencia_id = int(ocorrencia_id)
+    except (TypeError, ValueError):
+        return {"sucesso": False, "mensagem": "Identificador de ocorrência inválido."}
+
+    conexao = None
+    caminho_foto = None
+    try:
+        conexao = sqlite3.connect(CAMINHO_BANCO)
+        cursor = conexao.cursor()
+        registro = cursor.execute(
+            "SELECT caminho_foto FROM ocorrencias WHERE id = ?", (ocorrencia_id,)
+        ).fetchone()
+        if registro is None:
+            return {"sucesso": False, "mensagem": "Ocorrência não encontrada."}
+
+        caminho_foto = registro[0]
+        cursor.execute("DELETE FROM ocorrencias WHERE id = ?", (ocorrencia_id,))
+        conexao.commit()
+    except sqlite3.Error as erro:
+        if conexao:
+            conexao.rollback()
+        mensagem = f"[ERRO]: Falha ao excluir ocorrência | detalhes do erro: {erro}"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
+        return {"sucesso": False, "mensagem": "Não foi possível excluir a ocorrência."}
+    finally:
+        if conexao:
+            conexao.close()
+
+    foto_excluida = False
+    if caminho_foto:
+        caminho_seguro = os.path.join(PASTA_FOTOS, os.path.basename(caminho_foto))
+        try:
+            if os.path.isfile(caminho_seguro):
+                os.remove(caminho_seguro)
+                foto_excluida = True
+        except OSError as erro:
+            mensagem = f"[AVISO]: Ocorrência {ocorrencia_id} excluída, mas a foto não pôde ser removida: {erro}"
+            print(mensagem)
+            servidor.enviar_log(mensagem)
+
+    mensagem = "Ocorrência descartada com sucesso."
+    print(f"[BANCO]: {mensagem}")
+    servidor.enviar_log(f"[BANCO]: {mensagem}")
+    return {"sucesso": True, "mensagem": mensagem, "foto_excluida": foto_excluida}
+
 def dados_ocorrencias():
     registros = []
     conexao = None

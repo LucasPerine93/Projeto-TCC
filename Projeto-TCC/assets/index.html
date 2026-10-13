@@ -33,18 +33,31 @@
 
       <div class="video-container">
         <iframe id="video"></iframe>
+        <!-- Placeholder elegante exibido enquanto a câmera não transmite. -->
+        <div class="camera-placeholder" id="camera-placeholder">
+          <svg class="ic camera-placeholder-icone" aria-hidden="true"><use href="icones.svg#camera" /></svg>
+          <p>Aguardando transmissão da câmera...</p>
+        </div>
         <canvas id="area-risco" width="720" height="460"></canvas>
       </div>
 
       <aside id="logs">
-        <h2>
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#clipboard" /></svg>
-          Logs do Sistema
-        </h2>
-        <button id="limpar-logs" class="botao botao-secundario botao-pequeno">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
-          Limpar logs
-        </button>
+        <div class="logs-cabecalho">
+          <h2>
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#clipboard" /></svg>
+            Logs do Sistema
+          </h2>
+          <div class="logs-acoes">
+            <button id="toggle-alerta-sonoro" class="botao botao-secundario botao-pequeno" type="button" aria-pressed="false">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#alerta" /></svg>
+              <span id="texto-alerta-sonoro">Alerta sonoro: Desativado</span>
+            </button>
+            <button id="limpar-logs" class="botao botao-secundario botao-pequeno">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
+              Limpar logs
+            </button>
+          </div>
+        </div>
         <div id="mostrar-logs"></div>
       </aside>
 
@@ -63,7 +76,7 @@
       </button>
       <button id="botao-dashboard" class="botao botao-info">
         <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
-        DashBoard
+        Dashboard
       </button>
     </section>
 
@@ -80,6 +93,12 @@
           <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
           Infrações Capturadas:
         </h2>
+        <div class="galeria-filtros" aria-label="Filtrar ocorrências por tipo de infração">
+          <button class="filtro-galeria ativo" type="button" data-filtro="Todas">Todas <span data-contador-filtro="Todas">0</span></button>
+          <button class="filtro-galeria" type="button" data-filtro="Sem capacete">Sem capacete <span data-contador-filtro="Sem capacete">0</span></button>
+          <button class="filtro-galeria" type="button" data-filtro="Sem colete">Sem colete <span data-contador-filtro="Sem colete">0</span></button>
+          <button class="filtro-galeria" type="button" data-filtro="Sem capacete e colete">Sem capacete e colete <span data-contador-filtro="Sem capacete e colete">0</span></button>
+        </div>
         <button id="botao-atualizar" class="botao botao-primario">
           <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
           Atualizar Fotos
@@ -94,11 +113,36 @@
 
     <!-- ================= PAINEL ANALÍTICO ================= -->
     <section id="dashboard" style="display: none">
-      <h1>
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
-        Painel Analítico de Conformidade
-      </h1>
-      <p class="subtitulo">Indicadores e Histórico de Ocorrências Registradas</p>
+      <!-- Cabeçalho com título à esquerda e ações à direita (mesmo padrão
+           visual do topo da galeria). -->
+      <div class="dashboard-topo">
+        <div class="dashboard-titulo">
+          <h1>
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
+            Painel Analítico de Conformidade
+          </h1>
+          <p class="subtitulo">Indicadores e Histórico de Ocorrências Registradas</p>
+        </div>
+        <div class="painel-acoes">
+          <button id="botao-atualizar-painel" class="botao botao-primario">
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
+            Atualizar
+          </button>
+          <button id="botao-exportar-csv" class="botao botao-secundario">
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#download" /></svg>
+            Exportar CSV
+          </button>
+          <button id="ver-galeria" class="botao botao-primario">
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
+            Ver Fotos
+          </button>
+          <button id="voltar-painel" class="botao botao-primario">
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#voltar" /></svg>
+            Voltar
+          </button>
+        </div>
+      </div>
+      <p id="aviso-exportacao-csv" class="aviso-discreto" role="status" hidden></p>
 
       <div class="painel-conteudo">
         <div class="painel-cards">
@@ -129,6 +173,7 @@
             <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
             Distribuição das Infrações
           </h2>
+          <p class="estado-vazio" id="grafico-vazio" hidden>Nenhum evento registrado no momento</p>
           <canvas id="grafico-conformidade"></canvas>
         </div>
 
@@ -151,21 +196,6 @@
           </table>
         </div>
       </div>
-
-      <div class="painel-acoes">
-        <button id="botao-atualizar-painel" class="botao botao-primario">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
-          Atualizar
-        </button>
-        <button id="ver-galeria" class="botao botao-primario">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
-          Ver Fotos
-        </button>
-        <button id="voltar-painel" class="botao botao-primario">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#voltar" /></svg>
-          Voltar
-        </button>
-      </div>
     </section>
 
     <!-- ================= MODAL DE DETALHES DA FOTO ================= -->
@@ -177,6 +207,10 @@
       <button id="fechar-dados-imagem" class="botao botao-perigo botao-pequeno">
         <svg class="ic" aria-hidden="true"><use href="icones.svg#fechar" /></svg>
         Fechar
+      </button>
+      <button id="descartar-ocorrencia" class="botao botao-perigo botao-pequeno" type="button" hidden>
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
+        <span id="texto-descartar-ocorrencia">Descartar ocorrência</span>
       </button>
 
       <div class="detalhes-conteudo">
