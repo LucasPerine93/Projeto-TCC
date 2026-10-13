@@ -1,32 +1,19 @@
-"""Detector atual do Lucas com encaminhamento observacional não bloqueante.
-
-As regras de visão (detecção, associação EPI/pessoa, regiões corporais e área
-de risco) pertencem a este arquivo. A integração MVP consome apenas a lista
-``Operario`` já avaliada; ela não repete a geometria abaixo.
-
-O callback oficial atual ``on_detect_all`` chama ``operario_detectado`` com
-apenas ``specs_frame``. A biblioteca/frame não foi validada neste checkout,
-logo nenhuma assinatura de dois argumentos ou captura de imagem é assumida.
-"""
-from dataclasses import dataclass
-import math
-import os
-from pathlib import Path
-import sys
-import time
-
 from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from arduino.app_peripherals.camera import Camera
 
-import servidor
+from dataclasses import dataclass
+import math
+import time
 
+import servidor
+import banco
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
 deteccao = VideoObjectDetection(
     camera=camera,
     debounce_sec=0,
     confidence=0.5,
-    camera_preview=False,
+    camera_preview=True,
 )
 
 
@@ -36,22 +23,19 @@ class Operario:
     tem_colete: bool = False
     tem_capacete: bool = False
     risco_detectado: bool = False
-    # Metadados opcionais: preservam o que o modelo já forneceu, sem mudar
-    # associação/regiões. O adaptador usa fallback documentado se ausentes.
-    conf_pessoa: object = None
-    conf_capacete: object = None
-    bbox_capacete: object = None
-    conf_colete: object = None
-    bbox_colete: object = None
+
+    # Começa None mas depois vai receber um float por isso -> float | None
+    conf_pessoa: float | None = None
+    conf_capacete: float | None = None
+    conf_colete: float | None = None
 
 
-def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool):
-    """Aplica a lógica geométrica oficial do Lucas a um payload on_detect_all."""
+def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame):
+
     lista_operarios = []
 
     pessoas_detectadas = specs_frame.get("person", [])
     if pessoas_detectadas == []:
-        # Compatibilidade deliberada com o comportamento publicado do Lucas.
         return
 
     for dados_pessoa in pessoas_detectadas:
@@ -71,7 +55,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
             # Região do topo a 35% do corpo fica o capacete.
             if verificar_epi(box_capacete, operario.box_xyxy, (-0.15, 0.35)):
                 centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(
-                    operario.box_xyxy, box_capacete, 0.10
+                    operario.box_xyxy, box_capacete, 0.10 # Posiciona o centro na testa do operario
                 )
                 dist = calcular_distacia(centro_capacete, centro_cabeca_operario)
                 if dist < menor_distancia:
@@ -81,7 +65,6 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         if melhor_operario is not None:
             melhor_operario.tem_capacete = True
             melhor_operario.conf_capacete = dados_capacete.get("confidence")
-            melhor_operario.bbox_capacete = box_capacete
 
     coletes_detectados = specs_frame.get("vest", [])
     for dados_colete in coletes_detectados:
@@ -103,24 +86,23 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         if melhor_operario is not None:
             melhor_operario.tem_colete = True
             melhor_operario.conf_colete = dados_colete.get("confidence")
-            melhor_operario.bbox_colete = box_colete
 
-    if area_risco_ativa is True:
+    if area_risco_ativa == True:
         for operario in lista_operarios:
             if verificar_area_risco(box_area_risco, operario.box_xyxy):
                 operario.risco_detectado = True
 
     analisar_seguranca(lista_operarios)
+    filtrar_salvamento(lista_operarios, frame)
     return lista_operarios
 
 
 ultimo_alerta = 0
 TEMPO_ESPERA = 5
 
-
 def analisar_seguranca(lista_de_operarios):
-    """Logs originais do Lucas: terminal e WebUI, sem depender do MVP."""
-    global ultimo_alerta
+
+    global ultimo_alerta, salvar_imagem
     tempo_atual = time.time()
 
     if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
@@ -133,22 +115,49 @@ def analisar_seguranca(lista_de_operarios):
                 mensagem = "[OK]: Operario com todos os EPIs e seguro!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
+                salvar_imagem = False
 
             if operario.tem_colete is False:
                 mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
+                salvar_imagem = True
 
             if operario.tem_capacete is False:
                 mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
+                salvar_imagem = True
 
             if operario.risco_detectado is True:
                 mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
+                salvar_imagem = True
+
         ultimo_alerta = tempo_atual
+
+salvar_imagem = False
+ultimo_salvamento = 0
+TEMPO_ESPERA_SALVAR = 20
+def filtrar_salvamento(lista_de_operarios, frame):
+
+    global ultimo_salvamento, salvar_imagem
+    tempo_atual = time.time()
+    if (tempo_atual - ultimo_salvamento) >= TEMPO_ESPERA_SALVAR:
+        if salvar_imagem == True:
+            for operario in lista_de_operarios:
+                if operario.tem_colete == False and operario.tem_capacete == True:
+                    banco.salvar_ocorrencias("Sem colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+                if operario.tem_colete == True and operario.tem_capacete == False:
+                    banco.salvar_ocorrencias("Sem capacete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+                if operario.tem_colete == False and operario.tem_capacete == False:
+                    banco.salvar_ocorrencias("Sem capacete e colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+                salvar_imagem = False
+        ultimo_salvamento = tempo_atual
 
 
 def verificar_area_risco(box_risco, box_pessoa) -> bool:
@@ -187,89 +196,13 @@ def calcular_centro_com_regiao(box_operario, box_epi, regiao) -> tuple:
     return centro_operario, centro_epi
 
 
-# ---------------------------------------------------------------------------
-# Integração observacional: carregamento portável e degradação explícita.
-# Não importa a State Machine de montagem e não refaz geometria do detector.
-# ---------------------------------------------------------------------------
-def _raiz_mvp():
-    raiz_env = os.environ.get("TCC_MVP_ROOT")
-    if raiz_env:
-        candidato = Path(raiz_env)
-        if (candidato / "vision_integration" / "integracao_lucas.py").is_file():
-            return candidato
-
-    atual = Path(__file__).resolve().parent
-    for _ in range(6):
-        candidato = atual / "procedimento-mvp"
-        if (candidato / "vision_integration" / "integracao_lucas.py").is_file():
-            return candidato
-        if (atual / "vision_integration" / "integracao_lucas.py").is_file():
-            return atual
-        atual = atual.parent
-    return None
-
-
-_processar_operarios = None
-_erro_integracao = None
-
-
-def _inicializar_integracao():
-    """Configura o hook uma vez; erro não interrompe a visão nem fica oculto."""
-    global _processar_operarios, _erro_integracao
-    raiz = _raiz_mvp()
-    if raiz is None:
-        _erro_integracao = "procedimento-mvp/vision_integration não encontrado"
-        print(f"[VISION] integração observacional indisponível: {_erro_integracao}")
+def operario_detectado(specs_frame, frame=None):
+    if frame == None:
         return
 
-    for pasta in (raiz, raiz / "event_arch"):
-        texto = str(pasta)
-        if texto not in sys.path:
-            sys.path.insert(0, texto)
-    try:
-        from vision_integration import integracao_lucas
-        from vision_integration.detector_bridge import DetectorIngestBridge
-        from vision_integration.occurrence import OccurrenceTracker
-        from event_debounce import EventDebounce
-        from event_log import EventLog
-
-        integracao_lucas.configurar(
-            log=EventLog(raiz / "data" / "procedure_events.jsonl"),
-            debounce=EventDebounce(),
-            ponte=DetectorIngestBridge(),
-            occurrence=OccurrenceTracker(),
-        )
-        _processar_operarios = integracao_lucas.processar_operarios
-        print("[VISION] integração observacional configurada -> Operario -> adapter")
-    except Exception as exc:  # detector continua funcionando sem o MVP
-        _erro_integracao = repr(exc)
-        print(f"[VISION] integração observacional indisponível: {_erro_integracao}")
-
-
-def operario_detectado(specs_frame):
-    """Callback oficial do Lucas: um argumento, sem supor frame disponível."""
     risco = servidor.risco
     box_risco = servidor.box_risco
-    operarios = organizar_dado(specs_frame, box_risco, bool(risco))
-
-    if _processar_operarios is None:
-        return operarios
-    try:
-        # O adapter usa o veredicto risco_detectado/tem_* já definido acima.
-        # specs_frame é preservado como payload bruto da ingestão; não há frame
-        # aqui porque a API atual do callback não o documenta/disponibiliza.
-        resumo = _processar_operarios(
-            operarios,
-            specs_frame=specs_frame,
-            box_risco=box_risco,
-            area_ativa=bool(risco),
-        )
-        if not resumo.get("ok", False):
-            print("[VISION] integração observacional concluiu com erro registrado")
-    except Exception as exc:  # defesa extra: callback da câmera nunca cai
-        print(f"[VISION] integração observacional falhou no callback: {exc!r}")
-    return operarios
+    organizar_dado(specs_frame, box_risco, risco, frame)
 
 
-_inicializar_integracao()
 deteccao.on_detect_all(operario_detectado)

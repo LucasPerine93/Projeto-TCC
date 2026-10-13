@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 *.local
+.prettierignore
 
 # --- Python ---
 __pycache__/
@@ -19,6 +20,8 @@ env/
 .ruff_cache/
 .coverage
 htmlcov/
+__pycache__/
+*.pyc
 
 # --- Node / Frontend (Vite) ---
 node_modules/
@@ -34,6 +37,7 @@ data/
 **/data/images/
 **/data/*.jsonl
 *.jsonl
+procedure_events.jsonl
 
 # --- SO / editores ---
 .DS_Store
