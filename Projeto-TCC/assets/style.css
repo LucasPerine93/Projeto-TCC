@@ -927,10 +927,14 @@ body {
     0 25px 60px -10px rgba(0, 0, 0, 0.95),
     0 0 45px rgba(37, 99, 235, 0.25);
   display: grid !important;
-  grid-template-columns: 380px 1fr;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
   grid-template-rows: auto 1fr;
-  gap: 18px 24px;
-  align-items: center;
+  /* Espaçamento entre a moldura da imagem (coluna 1) e a seção de
+     detalhes/textos/barras (coluna 2): 28px na horizontal, 20px na vertical. */
+  gap: 20px 28px;
+  /* Alinhamento ao topo: evita que a foto "flute" centralizada sobre os
+     textos quando a coluna de detalhes é mais alta que a moldura. */
+  align-items: start;
   animation: modalEntradaSuave 0.32s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
@@ -1006,8 +1010,11 @@ body {
   box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
 }
 
-/* Container de Informações da Imagem (bloco direito do modal) */
-#mostrar-dados-imagem > div {
+/* Seção de detalhes da ocorrência (bloco direito do modal).
+   IMPORTANTE: usar a classe .detalhes-conteudo e NÃO "> div" — este seletor
+   também capturaria a #foto-moldura e a jogaria na mesma célula do grid,
+   sobrepondo a imagem aos textos e às barras de confiança. */
+#mostrar-dados-imagem > .detalhes-conteudo {
   grid-column: 2;
   grid-row: 1 / 3;
   padding-top: 24px;
@@ -1015,7 +1022,7 @@ body {
 }
 
 /* Cabeçalho / Título das Informações */
-#mostrar-dados-imagem > div h3 {
+#mostrar-dados-imagem > .detalhes-conteudo h3 {
   margin: 0 0 14px 0;
   font-size: 1.15rem;
   font-weight: 700;
