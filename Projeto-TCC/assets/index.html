@@ -4,348 +4,139 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Painel UNO Q - Detecção de EPIs</title>
-    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
-    <!-- Biblioteca de ícones SVG inline (sprite). Cada ícone é um <symbol>
-         referenciado via <svg><use href="#ic-..."/></svg>. Sem libs externas. -->
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      style="display: none"
-      aria-hidden="true"
-    >
-      <symbol
-        id="ic-escudo"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-      </symbol>
-      <symbol
-        id="ic-camera"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-        <circle cx="12" cy="13" r="4" />
-      </symbol>
-      <symbol
-        id="ic-clipboard"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
-        <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
-      </symbol>
-      <symbol
-        id="ic-alerta"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-        <line x1="12" y1="9" x2="12" y2="13" />
-        <line x1="12" y1="17" x2="12.01" y2="17" />
-      </symbol>
-      <symbol
-        id="ic-tendencia"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
-        <polyline points="17 6 23 6 23 12" />
-      </symbol>
-      <symbol
-        id="ic-relogio"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="10" />
-        <polyline points="12 6 12 12 16 14" />
-      </symbol>
-      <symbol
-        id="ic-grafico"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M21.21 15.89A10 10 0 1 1 8 2.83" />
-        <path d="M22 12A10 10 0 0 0 12 2v10z" />
-      </symbol>
-      <symbol
-        id="ic-tabela"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-        <line x1="3" y1="9" x2="21" y2="9" />
-        <line x1="3" y1="15" x2="21" y2="15" />
-        <line x1="9" y1="3" x2="9" y2="21" />
-      </symbol>
-      <symbol
-        id="ic-mouse"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="6" y="3" width="12" height="18" rx="6" />
-        <line x1="12" y1="7" x2="12.01" y2="7" />
-      </symbol>
-      <symbol
-        id="ic-limpar"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M3 6h18" />
-        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-        <line x1="10" y1="11" x2="10" y2="17" />
-        <line x1="14" y1="11" x2="14" y2="17" />
-      </symbol>
-      <symbol
-        id="ic-cadeado"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </symbol>
-      <symbol
-        id="ic-imagem"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-        <circle cx="8.5" cy="8.5" r="1.5" />
-        <polyline points="21 15 16 10 5 21" />
-      </symbol>
-      <symbol
-        id="ic-atualizar"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <polyline points="23 4 23 10 17 10" />
-        <polyline points="1 20 1 14 7 14" />
-        <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-      </symbol>
-      <symbol
-        id="ic-voltar"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <line x1="19" y1="12" x2="5" y2="12" />
-        <polyline points="12 19 5 12 12 5" />
-      </symbol>
-      <symbol
-        id="ic-fechar"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <line x1="18" y1="6" x2="6" y2="18" />
-        <line x1="6" y1="6" x2="18" y2="18" />
-      </symbol>
-    </svg>
+    <!-- Ícones: ficam em icones.svg e são usados via
+         <svg class="ic"><use href="icones.svg#nome" /></svg> -->
 
-    <div id="tela-bloqueio" style="display: block">
-      <span class="icone-bloqueio"
-        ><svg class="ic" aria-hidden="true"><use href="#ic-escudo" /></svg
-      ></span>
+    <!-- ================= TELA DE BLOQUEIO ================= -->
+    <section id="tela-bloqueio" style="display: block">
+      <svg class="ic icone-bloqueio" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
       <h1>Detecção de EPIs</h1>
       <h2>Acesso Restrito ao Painel</h2>
-      <span class="instrucao-bloqueio"
-        >Digite sua senha para desbloquear o sistema de monitoramento:</span
-      >
+      <p class="instrucao-bloqueio">
+        Digite sua senha para desbloquear o sistema de monitoramento:
+      </p>
       <input type="text" id="caixa-senha" placeholder="Digite sua senha ..." />
-      <button id="enviar-senha">Enviar</button>
+      <button id="enviar-senha" class="botao botao-primario">Enviar</button>
       <span id="mensagem-erro"></span>
-    </div>
+    </section>
 
-    <div id="video-camera" style="display: none">
+    <!-- ================= CÂMERA AO VIVO ================= -->
+    <section id="video-camera" style="display: none">
       <h1>
-        <svg class="ic ic-h1" aria-hidden="true"><use href="#ic-camera" /></svg>
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
         Sistema de Detecção de EPIs
       </h1>
-      <span class="subtitulo-camera"
-        >Transmissão e Monitoramento em Tempo Real</span
-      >
+      <p class="subtitulo">Transmissão e Monitoramento em Tempo Real</p>
 
       <div class="video-container">
-        <iframe
-          id="video"
-          width="720"
-          height="480"
-          src=""
-          frameborder="0"
-        ></iframe>
+        <iframe id="video"></iframe>
         <canvas id="area-risco" width="720" height="460"></canvas>
       </div>
 
-      <div id="logs">
+      <aside id="logs">
         <h2>
-          <svg class="ic ic-h2" aria-hidden="true"><use href="#ic-clipboard" /></svg>
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#clipboard" /></svg>
           Logs do Sistema
         </h2>
-        <button id="limpar-logs">
-          <svg class="ic ic-btn-sm" aria-hidden="true"><use href="#ic-limpar" /></svg>
+        <button id="limpar-logs" class="botao botao-secundario botao-pequeno">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
           Limpar logs
         </button>
         <div id="mostrar-logs"></div>
-      </div>
+      </aside>
 
-      <span class="instrucao-canvas"
-        ><svg class="ic ic-inline" aria-hidden="true"><use href="#ic-mouse" /></svg
-        >Clique e arraste o mouse sobre o vídeo para demarcar a área de risco</span
-      >
-      <button id="limpar-box">
-        <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-limpar" /></svg>
+      <p class="instrucao-canvas">
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#mouse" /></svg>
+        Clique e arraste o mouse sobre o vídeo para demarcar a área de risco
+      </p>
+
+      <button id="limpar-box" class="botao botao-alerta">
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
         Limpar
       </button>
-      <button id="bloquear">
-        <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-cadeado" /></svg>
+      <button id="bloquear" class="botao botao-perigo">
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#cadeado" /></svg>
         Bloquear
       </button>
-      <button id="botao-dashboard">
-        <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-imagem" /></svg>
+      <button id="botao-dashboard" class="botao botao-info">
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
         DashBoard
       </button>
-    </div>
+    </section>
 
-    <div id="capturas-infracoes" style="display: none">
+    <!-- ================= GALERIA DE INFRAÇÕES ================= -->
+    <section id="capturas-infracoes" style="display: none">
       <h1>
-        <svg class="ic ic-h1" aria-hidden="true"><use href="#ic-imagem" /></svg>
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
         Galeria de Infrações de EPIs
       </h1>
-      <span class="subtitulo-camera"
-        >Registro Fotográfico das Ocorrências Capturadas</span
-      >
+      <p class="subtitulo">Registro Fotográfico das Ocorrências Capturadas</p>
 
-      <div>
-        <h3>
-          <svg class="ic ic-h3-galeria" aria-hidden="true"><use href="#ic-camera" /></svg>
+      <div class="cartao galeria">
+        <h2>
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
           Infrações Capturadas:
-        </h3>
-        <button id="botao-atualizar">
-          <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-atualizar" /></svg>
+        </h2>
+        <button id="botao-atualizar" class="botao botao-primario">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
           Atualizar Fotos
         </button>
-        <button id="voltar-camera">
-          <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-voltar" /></svg>
+        <button id="voltar-camera" class="botao botao-primario">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#voltar" /></svg>
           Voltar
         </button>
         <div id="galeria-fotos"></div>
       </div>
-    </div>
+    </section>
 
-    <div id="dashboard" style="display: none">
+    <!-- ================= PAINEL ANALÍTICO ================= -->
+    <section id="dashboard" style="display: none">
       <h1>
-        <svg class="ic ic-h1" aria-hidden="true"><use href="#ic-escudo" /></svg>
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
         Painel Analítico de Conformidade
       </h1>
-      <span class="subtitulo-camera"
-        >Indicadores e Histórico de Ocorrências Registradas</span
-      >
+      <p class="subtitulo">Indicadores e Histórico de Ocorrências Registradas</p>
 
       <div class="painel-conteudo">
         <div class="painel-cards">
-          <div class="kpi-card">
-            <span class="kpi-icone"
-              ><svg class="ic" aria-hidden="true"><use href="#ic-clipboard" /></svg
-            ></span>
+          <article class="cartao kpi-card">
+            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#clipboard" /></svg>
             <span class="kpi-valor" id="kpi-total">0</span>
             <span class="kpi-rotulo">Total de Observações</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-icone"
-              ><svg class="ic" aria-hidden="true"><use href="#ic-alerta" /></svg
-            ></span>
+          </article>
+          <article class="cartao kpi-card">
+            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#alerta" /></svg>
             <span class="kpi-valor" id="kpi-tipos">0</span>
             <span class="kpi-rotulo">Tipos de Infração</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-icone"
-              ><svg class="ic" aria-hidden="true"><use href="#ic-tendencia" /></svg
-            ></span>
+          </article>
+          <article class="cartao kpi-card">
+            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#tendencia" /></svg>
             <span class="kpi-valor kpi-valor-texto" id="kpi-comum">--</span>
             <span class="kpi-rotulo">Infração Mais Comum</span>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-icone"
-              ><svg class="ic" aria-hidden="true"><use href="#ic-relogio" /></svg
-            ></span>
+          </article>
+          <article class="cartao kpi-card">
+            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#relogio" /></svg>
             <span class="kpi-valor kpi-valor-texto" id="kpi-ultima">--</span>
             <span class="kpi-rotulo">Última Ocorrência</span>
-          </div>
+          </article>
         </div>
 
-        <div class="painel-grafico">
-          <h3>
-            <svg class="ic ic-h3" aria-hidden="true"><use href="#ic-grafico" /></svg>
+        <div class="cartao painel-grafico">
+          <h2>
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
             Distribuição das Infrações
-          </h3>
+          </h2>
           <canvas id="grafico-conformidade"></canvas>
         </div>
 
-        <div class="painel-tabela">
-          <h3>
-            <svg class="ic ic-h3" aria-hidden="true"><use href="#ic-tabela" /></svg>
+        <div class="cartao painel-tabela">
+          <h2>
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#tabela" /></svg>
             Eventos Recentes
-          </h3>
+          </h2>
           <table id="tabela-eventos">
             <thead>
               <tr>
@@ -362,35 +153,37 @@
       </div>
 
       <div class="painel-acoes">
-        <button id="botao-atualizar-painel">
-          <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-atualizar" /></svg>
+        <button id="botao-atualizar-painel" class="botao botao-primario">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
           Atualizar
         </button>
-        <button id="ver-galeria">
-          <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-imagem" /></svg>
+        <button id="ver-galeria" class="botao botao-primario">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
           Ver Fotos
         </button>
-        <button id="voltar-painel">
-          <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-voltar" /></svg>
+        <button id="voltar-painel" class="botao botao-primario">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#voltar" /></svg>
           Voltar
         </button>
       </div>
-    </div>
+    </section>
 
+    <!-- ================= MODAL DE DETALHES DA FOTO ================= -->
     <div id="mostrar-dados-imagem" style="display: none">
-      <div class="foto-media foto-media-modal" id="foto-moldura">
-        <img id="foto-ampliada" src="" alt="Imagem ampliada" />
+      <!-- Moldura da foto: ancora as caixas de detecção sobre a imagem. -->
+      <div id="foto-moldura">
+        <img id="foto-ampliada" alt="Imagem ampliada" />
       </div>
-      <button id="fechar-dados-imagem">
-        <svg class="ic ic-btn" aria-hidden="true"><use href="#ic-fechar" /></svg>
+      <button id="fechar-dados-imagem" class="botao botao-perigo botao-pequeno">
+        <svg class="ic" aria-hidden="true"><use href="icones.svg#fechar" /></svg>
         Fechar
       </button>
 
       <div class="detalhes-conteudo">
-        <h3>
-          <svg class="ic ic-titulo-modal" aria-hidden="true"><use href="#ic-grafico" /></svg>
+        <h2>
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
           Detalhes da Ocorrência
-        </h3>
+        </h2>
 
         <div class="detalhe-linha">
           <span class="detalhe-rotulo">Data / Hora</span>
@@ -399,17 +192,17 @@
 
         <div class="detalhe-linha">
           <span class="detalhe-rotulo">Infração</span>
-          <span class="detalhe-valor destaque-infracao" id="tipo-infracao">--</span>
+          <span class="detalhe-valor" id="tipo-infracao">--</span>
         </div>
 
         <div class="detalhe-coords">
           <div class="coord-celula">
             <span class="detalhe-rotulo">Posição X</span>
-            <span class="detalhe-valor mono" id="posicaox-infracao">--</span>
+            <span class="detalhe-valor" id="posicaox-infracao">--</span>
           </div>
           <div class="coord-celula">
             <span class="detalhe-rotulo">Posição Y</span>
-            <span class="detalhe-valor mono" id="posicaoy-infracao">--</span>
+            <span class="detalhe-valor" id="posicaoy-infracao">--</span>
           </div>
         </div>
 
@@ -417,30 +210,24 @@
           <span class="conf-titulo">Confiança das Detecções</span>
 
           <div class="conf-item">
-            <div class="conf-cabecalho">
-              <span class="conf-nome">Pessoa</span>
-              <span class="conf-valor" id="confiancap-infracao">--</span>
-            </div>
+            <span class="conf-nome">Pessoa</span>
+            <span class="conf-valor" id="confiancap-infracao">--</span>
             <div class="conf-trilha">
               <div class="conf-preenchimento" id="barra-conf-pessoa"></div>
             </div>
           </div>
 
           <div class="conf-item">
-            <div class="conf-cabecalho">
-              <span class="conf-nome">Capacete</span>
-              <span class="conf-valor" id="confiancacp-infracao">--</span>
-            </div>
+            <span class="conf-nome">Capacete</span>
+            <span class="conf-valor" id="confiancacp-infracao">--</span>
             <div class="conf-trilha">
               <div class="conf-preenchimento" id="barra-conf-capacete"></div>
             </div>
           </div>
 
           <div class="conf-item">
-            <div class="conf-cabecalho">
-              <span class="conf-nome">Colete</span>
-              <span class="conf-valor" id="confiancacl-infracao">--</span>
-            </div>
+            <span class="conf-nome">Colete</span>
+            <span class="conf-valor" id="confiancacl-infracao">--</span>
             <div class="conf-trilha">
               <div class="conf-preenchimento" id="barra-conf-colete"></div>
             </div>
@@ -452,6 +239,6 @@
     <script src="libs/socket.io.min.js"></script>
     <script src="libs/chart.umd.min.js"></script>
     <script src="libs/arduino.js"></script>
-    <script src="app.js"></script>
+    <script type="module" src="js/app.js"></script>
   </body>
 </html>
