@@ -1,4 +1,5 @@
 from fastapi.responses import FileResponse
+from collections import Counter
 import servidor
 import sqlite3
 import time
@@ -142,7 +143,9 @@ def dados_ocorrencias():
 
         # Pega as linhas e converte para dicionarios 
         linhas = cursor.fetchall()
-        registros = [dict(linha) for linha in linhas]
+        registros = []
+        for linha in linhas:
+            registros.append(dict(linha))
         
         for foto in registros:
             """ Ao invés do caminho bruto da foto, pega só o nome do 
@@ -161,91 +164,32 @@ def dados_ocorrencias():
             conexao.close()
     return registros
 
+def calcular_dados_dashboard():
+    dados = dados_ocorrencias() # Pega os dados do banco
+    dados_totais = len(dados) # Lê o tamnho da lista onde os dados estão
 
-def dados_dashboard(caminho_banco: str = None):
-    """Consolida as métricas de conformidade para o dashboard analítico.
-
-    Retorna sempre um DICIONÁRIO (objeto JSON com chaves nomeadas), e não uma
-    lista, para manter o contrato flexível caso o banco venha a mudar:
-
-        {
-            "total_observacoes": int,
-            "resumo_conformidade": {"<tipo_infracao>": int, ...},
-            "taxa_conformidade":  {"<tipo_infracao>": float, ...},
-            "eventos_recentes":   [ {...}, ... ]
+    if dados_totais == 0:
+        return {
+            "total_observacoes": 0,
+            "resumo_conformidade": {},
+            "taxa_conformidade": {},
+            "eventos_recentes": []
         }
 
-    Observação importante: o detector só persiste eventos de NÃO conformidade
-    (sem capacete / sem colete). Por isso, "taxa_conformidade" aqui representa
-    a distribuição percentual entre os tipos de infração registrados, e não a
-    fração de trabalhadores conformes — isso não poderia ser calculado sem o
-    denominador de verificações totais, que não é armazenado.
-    """
-    alvo = caminho_banco or CAMINHO_BANCO
+    tipos = []
+    for dado in dados:
+        tipos.append(dado["tipo_infracao"])
 
-    resultado = {
-        "total_observacoes": 0,
-        "resumo_conformidade": {},
-        "taxa_conformidade": {},
-        "eventos_recentes": [],
+    contagem_tipos = dict(Counter(tipos))
+
+    distribuicao_percentual = {}
+    for ocorrencias, qnt in contagem_tipos.items():
+        porcentagem = round((qnt / dados_totais) * 100, 1)
+        distribuicao_percentual[ocorrencias] = porcentagem
+
+    return {
+        "total_observacoes": dados_totais,
+        "resumo_conformidade": contagem_tipos,
+        "taxa_conformidade": distribuicao_percentual,
+        "eventos_recentes": dados
     }
-
-    conexao = None
-    try:
-        conexao = sqlite3.connect(alvo)
-
-        # Ativa o mapeamento por nome da coluna (acesso por chave).
-        conexao.row_factory = sqlite3.Row
-        cursor = conexao.cursor()
-
-        cursor.execute("SELECT COUNT(*) AS total FROM ocorrencias")
-        linha_total = cursor.fetchone()
-        total = linha_total["total"] if linha_total else 0
-        resultado["total_observacoes"] = total
-
-        # Sem ocorrências (ou tabela ainda vazia): devolve a estrutura padrão.
-        if total == 0:
-            return resultado
-
-        cursor.execute(
-            "SELECT tipo_infracao, COUNT(*) AS quantidade "
-            "FROM ocorrencias "
-            "GROUP BY tipo_infracao "
-            "ORDER BY quantidade DESC"
-        )
-        resumo = {}
-        taxa = {}
-        for linha in cursor.fetchall():
-            tipo = linha["tipo_infracao"]
-            quantidade = linha["quantidade"]
-            resumo[tipo] = quantidade
-            taxa[tipo] = round((quantidade / total) * 100, 1)
-
-        resultado["resumo_conformidade"] = resumo
-        resultado["taxa_conformidade"] = taxa
-
-        cursor.execute(
-            "SELECT id, timestamp, tipo_infracao, posicao_x, posicao_y, "
-            "conf_pessoa, conf_capacete, conf_colete, caminho_foto "
-            "FROM ocorrencias "
-            "ORDER BY id DESC LIMIT 20"
-        )
-        eventos = []
-        for linha in cursor.fetchall():
-            evento = dict(linha)
-            # Expõe apenas o nome do arquivo para o GET /foto/{nome_foto}.
-            if evento.get("caminho_foto"):
-                evento["caminho_foto"] = os.path.basename(evento["caminho_foto"])
-            eventos.append(evento)
-        resultado["eventos_recentes"] = eventos
-
-    except sqlite3.Error as e:
-        mensagem = f"[ERRO]: Falha ao gerar dados do dashboard | detalhes do erro: {e}"
-        print(mensagem)
-        servidor.enviar_log(mensagem)
-
-    finally:
-        if conexao:
-            conexao.close()
-
-    return resultado

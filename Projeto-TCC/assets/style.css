@@ -764,6 +764,10 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
   padding: 22px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  grid-auto-rows: 290px; /* <-- ADICIONE ESTA LINHA: Garante que cada linha tenha 290px! */
+  gap: 20px;
   background: #080d1a;
   border: 1px solid rgba(30, 41, 59, 0.85);
   border-radius: 14px;
@@ -828,8 +832,9 @@ body {
 }
 
 #galeria-fotos .foto-card img {
-  width: 100%;
-  height: 220px;
+   width: 100%;
+  height: 210px;        
+  flex-shrink: 0;     
   object-fit: cover;
   background-color: #0b1329;
   display: block;
