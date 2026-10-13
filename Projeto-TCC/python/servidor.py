@@ -6,6 +6,8 @@ calculado pelo detector; ela não reinterpreta esta área neste módulo.
 """
 from arduino.app_bricks.web_ui import WebUI
 
+import banco
+
 box_risco = None
 senha_acesso = 937389
 risco = False
@@ -41,4 +43,12 @@ def enviar_log(mensagem):
 ui.on_message("senha", verificar_senha)
 ui.on_message("area_marcada", calcular_area)
 ui.on_message("limpar_box_risco", limpar_box_risco)
-ui.on_message("retornar_box_risco", lambda *args: ui.send_message("box_risco", box_risco))
+ui.on_message(
+    "retornar_box_risco",
+    lambda *args: ui.send_message("box_risco", box_risco),
+)
+
+# Endpoints HTTP que alimentam o painel analítico e a galeria de infrações.
+ui.expose_api("GET", "/foto/{nome_foto}", banco.pegar_foto)
+ui.expose_api("GET", "/listar_ocorrencias", banco.dados_ocorrencias)
+ui.expose_api("GET", "/dashboard_dados", banco.dados_dashboard)
