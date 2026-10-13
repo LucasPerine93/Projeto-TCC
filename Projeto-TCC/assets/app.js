@@ -35,6 +35,12 @@ let area_marcada = null;
 
 let telaAtual = "camera"; // "camera" | "galeria" | "painel"
 
+// Dimensões do frame da câmera (detector.py: resolution=(720, 480)).
+// Usadas para converter as caixas de detecção (pixels) em % e manter
+// o alinhamento quando a imagem é redimensionada.
+const LARGURA_FRAME = 720;
+const ALTURA_FRAME = 480;
+
 function mostrarTela() {
   document.getElementById("tela-bloqueio").style.display = "none";
   document.getElementById("video-camera").style.display = "none";
@@ -175,8 +181,14 @@ async function carregarFotos() {
     info.appendChild(tipo);
     info.appendChild(data);
 
+    // Moldura relativa para posicionar as caixas sobre a imagem.
+    const moldura = document.createElement("div");
+    moldura.className = "foto-media";
+    moldura.appendChild(foto);
+    desenharCaixas(moldura, dado);
+
     card.appendChild(badge);
-    card.appendChild(foto);
+    card.appendChild(moldura);
     card.appendChild(info);
 
     // Abre o modal de detalhes ao clicar em qualquer parte do cartão.
@@ -325,6 +337,7 @@ function aplicarBarraConfianca(idValor, idBarra, valor) {
 
 function mostrarDetalhesFoto(dado) {
   imagemAmpliada.src = `/foto/${dado.caminho_foto}`;
+  desenharCaixas(document.getElementById("foto-moldura"), dado);
 
   document.getElementById("data-infracao").innerText = new Date(
     dado.timestamp,
@@ -353,6 +366,75 @@ function mostrarDetalhesFoto(dado) {
   );
 
   document.getElementById("mostrar-dados-imagem").style.display = "block";
+}
+
+function interpretarCaixas(ocorrencia) {
+  // Normaliza o campo "caixas" (JSON ou dicionário) para {pessoa, capacete, colete}.
+  const bruto = ocorrencia?.caixas;
+  if (!bruto) return null;
+  let caixas = bruto;
+  if (typeof caixas === "string") {
+    try {
+      caixas = JSON.parse(caixas);
+    } catch (e) {
+      return null;
+    }
+  }
+  if (!caixas || typeof caixas !== "object") return null;
+  const normalizar = (valor) =>
+    Array.isArray(valor) && valor.length === 4 && valor.every((v) => Number.isFinite(Number(v)))
+      ? valor.map(Number)
+      : null;
+  return {
+    pessoa: normalizar(caixas.pessoa),
+    capacete: normalizar(caixas.capacete),
+    colete: normalizar(caixas.colete),
+  };
+}
+
+function criarCaixaDeteccao(rotulo, caixa, confianca, classeCss) {
+  // Cria o retângulo posicionado em % para acompanhar o redimensionamento.
+  const [x1, y1, x2, y2] = caixa;
+  const esquerda = Math.max(0, Math.min(x1, x2));
+  const topo = Math.max(0, Math.min(y1, y2));
+  const largura = Math.abs(x2 - x1);
+  const altura = Math.abs(y2 - y1);
+  const elemento = document.createElement("div");
+  elemento.className = `caixa-deteccao ${classeCss || ""}`.trim();
+  elemento.style.left = `${(esquerda / LARGURA_FRAME) * 100}%`;
+  elemento.style.top = `${(topo / ALTURA_FRAME) * 100}%`;
+  elemento.style.width = `${(largura / LARGURA_FRAME) * 100}%`;
+  elemento.style.height = `${(altura / ALTURA_FRAME) * 100}%`;
+  const etiqueta = document.createElement("span");
+  etiqueta.className = "caixa-deteccao-rotulo";
+  // Caixa encostada no topo: etiqueta dentro, para não ser cortada.
+  if (topo < ALTURA_FRAME * 0.10) {
+    etiqueta.style.top = "2px";
+  }
+  const textoConfianca =
+    confianca === null || confianca === undefined || Number.isNaN(Number(confianca))
+      ? ""
+      : ` ${(Number(confianca) * 100).toFixed(0)}%`;
+  etiqueta.textContent = `${rotulo}${textoConfianca}`;
+  elemento.appendChild(etiqueta);
+  return elemento;
+}
+
+function desenharCaixas(container, ocorrencia) {
+  // Desenha as caixas da pessoa/capacete/colete sobre a imagem exibida.
+  if (!container) return;
+  container.querySelectorAll(".caixa-deteccao").forEach((el) => el.remove());
+  const caixas = interpretarCaixas(ocorrencia);
+  if (!caixas) return;
+  const itens = [
+    { rotulo: "Pessoa", caixa: caixas.pessoa, confianca: ocorrencia?.conf_pessoa, classe: "caixa-pessoa" },
+    { rotulo: "Capacete", caixa: caixas.capacete, confianca: ocorrencia?.conf_capacete, classe: "caixa-capacete" },
+    { rotulo: "Colete", caixa: caixas.colete, confianca: ocorrencia?.conf_colete, classe: "caixa-colete" },
+  ];
+  itens.forEach(({ rotulo, caixa, confianca, classe }) => {
+    if (!caixa) return;
+    container.appendChild(criarCaixaDeteccao(rotulo, caixa, confianca, classe));
+  });
 }
 
 // Fecha o modal de detalhes ao clicar no fundo escurecido (overlay).

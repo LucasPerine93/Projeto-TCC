@@ -29,6 +29,11 @@ class Operario:
     conf_capacete: float | None = None
     conf_colete: float | None = None
 
+    # Caixas reais (bounding boxes em pixels do frame) dos EPIs associados.
+    # Começam None e são preenchidas em organizar_dado quando há associação.
+    box_capacete: tuple | None = None
+    box_colete: tuple | None = None
+
 
 def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame):
 
@@ -65,6 +70,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         if melhor_operario is not None:
             melhor_operario.tem_capacete = True
             melhor_operario.conf_capacete = dados_capacete.get("confidence")
+            melhor_operario.box_capacete = box_capacete
 
     coletes_detectados = specs_frame.get("vest", [])
     for dados_colete in coletes_detectados:
@@ -86,6 +92,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         if melhor_operario is not None:
             melhor_operario.tem_colete = True
             melhor_operario.conf_colete = dados_colete.get("confidence")
+            melhor_operario.box_colete = box_colete
 
     if area_risco_ativa == True:
         for operario in lista_operarios:
@@ -148,13 +155,13 @@ def filtrar_salvamento(lista_de_operarios, frame):
         if salvar_imagem == True:
             for operario in lista_de_operarios:
                 if operario.tem_colete == False and operario.tem_capacete == True:
-                    banco.salvar_ocorrencias("Sem colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+                    banco.salvar_ocorrencias("Sem colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame, box_capacete=operario.box_capacete, box_colete=operario.box_colete)
 
                 if operario.tem_colete == True and operario.tem_capacete == False:
-                    banco.salvar_ocorrencias("Sem capacete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+                    banco.salvar_ocorrencias("Sem capacete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame, box_capacete=operario.box_capacete, box_colete=operario.box_colete)
 
                 if operario.tem_colete == False and operario.tem_capacete == False:
-                    banco.salvar_ocorrencias("Sem capacete e colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+                    banco.salvar_ocorrencias("Sem capacete e colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame, box_capacete=operario.box_capacete, box_colete=operario.box_colete)
 
                 salvar_imagem = False
         ultimo_salvamento = tempo_atual

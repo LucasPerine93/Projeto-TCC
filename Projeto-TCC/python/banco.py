@@ -1,4 +1,5 @@
 from fastapi.responses import FileResponse
+import json
 import servidor
 import sqlite3
 import time
@@ -12,6 +13,21 @@ CAMINHO_PENDRIVE = "/app/pendrive"
 
 CAMINHO_BANCO = os.path.join(CAMINHO_PENDRIVE, "seguranca.db")
 PASTA_FOTOS = os.path.join(CAMINHO_PENDRIVE, "evidencias")
+
+
+def _interpretar_caixas(valor):
+    """Converte o texto JSON das bounding boxes de volta para dicionário.
+
+    Retorna None quando não há dados (registros antigos, antes desta coluna
+    existir), mantendo a retrocompatibilidade com o restante do sistema.
+    """
+    if not valor:
+        return None
+    try:
+        caixas = json.loads(valor)
+    except (TypeError, ValueError):
+        return None
+    return caixas if isinstance(caixas, dict) else None
 
 def verificar_pendrive(caminho_pendrive: str) -> bool:
     if os.path.ismount(caminho_pendrive):
@@ -46,9 +62,18 @@ def inicializar_banco(caminho_banco: str) -> bool:
                 conf_pessoa REAL NULL,
                 conf_capacete REAL NULL,
                 conf_colete REAL NULL,
-                caminho_foto TEXT
+                caminho_foto TEXT,
+                caixas TEXT
             )
         """)
+
+        # Migração leve: garante a coluna de bounding boxes em bancos antigos.
+        colunas_existentes = [
+            linha[1] for linha in cursor.execute("PRAGMA table_info(ocorrencias)")
+        ]
+        if "caixas" not in colunas_existentes:
+            cursor.execute("ALTER TABLE ocorrencias ADD COLUMN caixas TEXT")
+
         conexao.commit()
         mensagem = "[BANCO]: Tabela de ocorrências pronta!"
         print(mensagem)
@@ -65,7 +90,19 @@ def inicializar_banco(caminho_banco: str) -> bool:
         if conexao:
             conexao.close()
 
-def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capacete, conf_colete, frame):
+def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capacete, conf_colete, frame, box_capacete=None, box_colete=None):
+    """Persiste uma ocorrência de não conformidade.
+
+    Além do centro da pessoa (posicao_x/posicao_y), grava também as caixas
+    reais (bounding boxes, em pixels do frame) no campo ``caixas`` (JSON),
+    permitindo que o front-end desenhe os retângulos sem reprocessar a imagem:
+
+        {
+            "pessoa":   [x1, y1, x2, y2] | null,
+            "capacete": [x1, y1, x2, y2] | null,   # só quando detectado
+            "colete":   [x1, y1, x2, y2] | null    # só quando detectado
+        }
+    """
     if verificar_pendrive(CAMINHO_PENDRIVE) and inicializar_banco(CAMINHO_BANCO):
         nome_imagem = f"foto_{int(time.time())}_{tipo_infracao}_{posicao_operario}.jpg"
         caminho_salvar = os.path.join(PASTA_FOTOS, nome_imagem)
@@ -86,12 +123,22 @@ def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capace
             cursor = conexao.cursor()
     
             sql = """
-                    INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto, caixas)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                   """
     
             px, py = (posicao_operario[0] + posicao_operario[2]) / 2, (posicao_operario[1] + posicao_operario[3]) / 2
-            cursor.execute(sql, (time.strftime("%Y-%m-%dT%H:%M:%S"), tipo_infracao, px, py, conf_pessoa, conf_capacete, conf_colete, caminho_salvar))
+
+            # Guarda as caixas reais (pixels do frame) para o front-end desenhar
+            # os retangulos sobre a imagem. Ausente => null, sem inventar dados.
+            caixas = {
+                "pessoa": [int(v) for v in posicao_operario],
+                "capacete": [int(v) for v in box_capacete] if box_capacete else None,
+                "colete": [int(v) for v in box_colete] if box_colete else None,
+            }
+            caixas_json = json.dumps(caixas)
+
+            cursor.execute(sql, (time.strftime("%Y-%m-%dT%H:%M:%S"), tipo_infracao, px, py, conf_pessoa, conf_capacete, conf_colete, caminho_salvar, caixas_json))
     
             conexao.commit()
             
@@ -134,7 +181,8 @@ def dados_ocorrencias():
                      "conf_pessoa, " \
                      "conf_capacete, " \
                      "conf_colete, " \
-                     "caminho_foto " \
+                     "caminho_foto, " \
+                     "caixas " \
                      "FROM ocorrencias " \
                      "ORDER BY id DESC LIMIT 50"
         
@@ -226,7 +274,7 @@ def dados_dashboard(caminho_banco: str = None):
 
         cursor.execute(
             "SELECT id, timestamp, tipo_infracao, posicao_x, posicao_y, "
-            "conf_pessoa, conf_capacete, conf_colete, caminho_foto "
+            "conf_pessoa, conf_capacete, conf_colete, caminho_foto, caixas "
             "FROM ocorrencias "
             "ORDER BY id DESC LIMIT 20"
         )
