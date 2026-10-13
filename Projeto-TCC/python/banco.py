@@ -137,7 +137,7 @@ def dados_ocorrencias():
                      "conf_colete, " \
                      "caminho_foto " \
                      "FROM ocorrencias " \
-                     "ORDER BY id DESC LIMIT 50"
+                     "ORDER BY id DESC"
         
         cursor.execute(requisicao)
 
