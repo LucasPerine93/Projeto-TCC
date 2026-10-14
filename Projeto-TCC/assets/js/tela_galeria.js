@@ -90,7 +90,8 @@ function montarTrabalhadores(ocorrencias) {
   return trabalhadores;
 }
 
-function agruparCenas(ocorrencias) {
+/** Exportado para os testes validarem a sincronia seletor x caixas. */
+export function agruparCenas(ocorrencias) {
   const cenas = new Map();
 
   ocorrencias.forEach((ocorrencia) => {
@@ -112,17 +113,19 @@ function agruparCenas(ocorrencias) {
   return [...cenas.values()].map((cena) => {
     const trabalhadores = montarTrabalhadores(cena.ocorrencias);
 
-    // Liga cada ocorrência registrada ao trabalhador correspondente na cena.
-    cena.selecionaveis = cena.ocorrencias.map((ocorrencia) => {
-      const caixas = lerCaixasBrutas(ocorrencia);
-      const proprio = trabalhadores.find((trabalhador) =>
-        mesmaCaixa(trabalhador.pessoa, caixas?.pessoa),
-      );
-      return {
-        ocorrencia,
-        trabalhador: proprio || trabalhadores[0] || null,
-      };
-    });
+    // Liga cada ocorrência registrada ao trabalhador correspondente na cena,
+    // ITERANDO PELOS TRABALHADORES: assim a ordem do seletor [Trabalhador N]
+    // fica idêntica à ordem em que as caixas são desenhadas (coletarItensCaixa
+    // varre cena.trabalhadores). Antes iterava-se por `ocorrencias`, que vem
+    // do banco em ORDER BY id DESC — ordem oposta à da lista `operarios` da
+    // cena, trocando o destaque das caixas em relação ao painel do modal.
+    cena.selecionaveis = trabalhadores
+      .map((trabalhador) => {
+        const ocorrencia = cena.ocorrencias.find((atual) =>
+          mesmaCaixa(lerCaixasBrutas(atual)?.pessoa, trabalhador.pessoa));
+        return ocorrencia ? { ocorrencia, trabalhador } : null;
+      })
+      .filter(Boolean);
 
     cena.trabalhadores = trabalhadores;
     cena.total_registros = cena.ocorrencias.length;
@@ -306,10 +309,23 @@ function criarCaixaDeteccao(rotulo, caixa, confianca, classeCss, extra) {
 /** Itens de caixa a desenhar: todos os trabalhadores da cena. */
 function coletarItensCaixa(fonte) {
   if (Array.isArray(fonte?.trabalhadores)) {
+    // O seletor [Trabalhador N] indexa `selecionaveis` (apenas ocorrências
+    // registradas), enquanto as caixas varrem `trabalhadores` (todos os vistos
+    // na cena, incluindo conformes). Por isso o destaque compara a IDENTIDADE
+    // da caixa pessoa do trabalhador ativo, e não o índice posicional — que
+    // dessincronizava painel x caixa quando os dois arrays diferiam em ordem
+    // ou em tamanho.
+    const trabalhadorAtivo =
+      fonte?.total_registros > 1 && Number.isInteger(fonte?.selecionado)
+        ? (fonte.selecionaveis?.[fonte.selecionado]?.trabalhador ?? null)
+        : null;
     return fonte.trabalhadores.flatMap((trabalhador, indice) => {
       const estado =
         fonte.total_registros > 1
-          ? indice === fonte.selecionado ? "caixa-selecionada" : "caixa-secundaria"
+          ? trabalhadorAtivo &&
+              mesmaCaixa(trabalhador.pessoa, trabalhadorAtivo.pessoa)
+            ? "caixa-selecionada"
+            : "caixa-secundaria"
           : "";
       const itens = [{
         rotulo: "Pessoa",
@@ -411,14 +427,23 @@ function desenharCaixas(container, fonte, permitirSelecao = false) {
       indice: item.indice,
     });
 
-    // Clicar na caixa da pessoa seleciona aquele trabalhador.
+    // Clicar na caixa da pessoa seleciona aquele trabalhador. O índice das
+    // caixas é o de `trabalhadores`, mas `selecionarTrabalhador` navega por
+    // `selecionaveis` (só ocorrências) — então localiza o botão correspondente
+    // pela caixa pessoa, evitando selecionar o trabalhador errado quando há
+    // conformes na cena (que não geram ocorrência nem botão no seletor).
     if (permitirSelecao && item.ehPessoa && item.indice !== undefined && item.indice !== null) {
       elemento.style.cursor = "pointer";
-      elemento.title = `Selecionar Trabalhador ${item.indice + 1}`;
-      elemento.addEventListener("click", (evento) => {
-        evento.stopPropagation();
-        selecionarTrabalhador(item.indice);
-      });
+      const indiceSelecao = (cenaAberta?.selecionaveis ?? []).findIndex(
+        (entrada) => mesmaCaixa(entrada.trabalhador?.pessoa, item.caixa),
+      );
+      if (indiceSelecao >= 0) {
+        elemento.title = `Selecionar Trabalhador ${indiceSelecao + 1}`;
+        elemento.addEventListener("click", (evento) => {
+          evento.stopPropagation();
+          selecionarTrabalhador(indiceSelecao);
+        });
+      }
     }
 
     container.appendChild(elemento);

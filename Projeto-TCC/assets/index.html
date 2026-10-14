@@ -200,18 +200,28 @@
 
     <!-- ================= MODAL DE DETALHES DA FOTO ================= -->
     <div id="mostrar-dados-imagem" style="display: none">
+      <!-- Cabeçalho flex: título à esquerda, ações (Descartar/Fechar) à direita. -->
+      <div class="modal-cabecalho">
+        <h2>
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
+          Detalhes da Ocorrência
+        </h2>
+        <div class="modal-acoes">
+          <button id="descartar-ocorrencia" class="botao botao-perigo botao-pequeno" type="button" hidden>
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
+            <span id="texto-descartar-ocorrencia">Descartar ocorrência</span>
+          </button>
+          <button id="fechar-dados-imagem" class="botao botao-perigo botao-pequeno">
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#fechar" /></svg>
+            Fechar
+          </button>
+        </div>
+      </div>
+
       <!-- Moldura da foto: ancora as caixas de detecção sobre a imagem. -->
       <div id="foto-moldura">
         <img id="foto-ampliada" alt="Imagem ampliada" />
       </div>
-      <button id="fechar-dados-imagem" class="botao botao-perigo botao-pequeno">
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#fechar" /></svg>
-        Fechar
-      </button>
-      <button id="descartar-ocorrencia" class="botao botao-perigo botao-pequeno" type="button" hidden>
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
-        <span id="texto-descartar-ocorrencia">Descartar ocorrência</span>
-      </button>
 
       <!-- Seletor de trabalhador: só aparece quando a cena tem mais de um registrado. -->
       <div id="seletor-trabalhador" class="seletor-trabalhador" hidden>
@@ -223,11 +233,6 @@
       </div>
 
       <div class="detalhes-conteudo">
-        <h2>
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
-          Detalhes da Ocorrência
-        </h2>
-
         <div class="detalhe-linha">
           <span class="detalhe-rotulo">Data / Hora</span>
           <span class="detalhe-valor" id="data-infracao">--</span>
