@@ -77,70 +77,126 @@ def inicializar_banco(caminho_banco: str) -> bool:
         if conexao:
             conexao.close()
 
-def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capacete, conf_colete, frame, box_capacete=None, box_colete=None):
-    """Persiste uma ocorrência de não conformidade.
+def _montar_caixas(posicao_operario, box_capacete, box_colete, cena=None, cena_id=None):
+    """Caixas do trabalhador + lista completa da cena, num unico JSON."""
+    caixas = {
+        "pessoa": [int(v) for v in posicao_operario],
+        "capacete": [int(v) for v in box_capacete] if box_capacete else None,
+        "colete": [int(v) for v in box_colete] if box_colete else None,
+        "cena_id": cena_id,
+        "operarios": cena or [],
+    }
+    return json.dumps(caixas)
 
-    Além do centro da pessoa (posicao_x/posicao_y), grava também as caixas
-    reais (bounding boxes, em pixels do frame) no campo ``caixas`` (JSON),
-    permitindo que o front-end desenhe os retângulos sem reprocessar a imagem:
 
-        {
-            "pessoa":   [x1, y1, x2, y2] | null,
-            "capacete": [x1, y1, x2, y2] | null,   # só quando detectado
-            "colete":   [x1, y1, x2, y2] | null    # só quando detectado
-        }
+def salvar_cena(frame, registros, cena=None):
+    """Grava UMA foto por cena e cria uma ocorrencia para cada trabalhador.
+
+    ``registros`` e uma lista de dicionarios com: tipo_infracao,
+    posicao_operario, conf_pessoa, conf_capacete, conf_colete, box_capacete e
+    box_colete. ``cena`` e a lista de todos os trabalhadores vistos no frame.
+
+    Retrocompatibilidade: o esquema do SQLite nao muda. Cada ocorrencia continua
+    com sua propria linha (posicao, confiancas e classificacao); o que muda e
+    que varias linhas passam a compartilhar o mesmo ``caminho_foto`` e o campo
+    ``caixas`` tambem passa a guardar a lista ``operarios`` da cena.
     """
-    if verificar_pendrive(CAMINHO_PENDRIVE) and inicializar_banco(CAMINHO_BANCO):
-        nome_imagem = f"foto_{int(time.time())}_{tipo_infracao}_{posicao_operario}.jpg"
-        caminho_salvar = os.path.join(PASTA_FOTOS, nome_imagem)
-        os.makedirs(PASTA_FOTOS, exist_ok=True)
+    if not registros:
+        return []
 
-        """ 
-            "wb" | w = como vai salvar a imagem (w: write) cria 
-             um arquvo novo ou sobreescreve o antigo 
-            "wb" | b = modo que o arquivo sera salvo (b: bytes) a 
-             imagem (frame) ja são bytes e esses bytes vão ser salvos no banco
-        """
+    if not (verificar_pendrive(CAMINHO_PENDRIVE) and inicializar_banco(CAMINHO_BANCO)):
+        return []
+
+    cena = cena or []
+    os.makedirs(PASTA_FOTOS, exist_ok=True)
+
+    agora = time.time()
+    cena_id = f"cena_{int(agora)}"
+    nome_imagem = f"foto_{int(agora)}_{registros[0]['tipo_infracao'].replace(' ', '_')}.jpg"
+    caminho_salvar = os.path.join(PASTA_FOTOS, nome_imagem)
+
+    try:
         with open(caminho_salvar, "wb") as arquivo:
             arquivo.write(frame)
-
-        conexao = None
-        try:
-            conexao = sqlite3.connect(CAMINHO_BANCO)
-            cursor = conexao.cursor()
-    
-            sql = """
-                    INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto, caixas)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                  """
-    
-            px, py = (posicao_operario[0] + posicao_operario[2]) / 2, (posicao_operario[1] + posicao_operario[3]) / 2
-
-            # Guarda as caixas reais (pixels do frame) para o front-end desenhar
-            # os retangulos sobre a imagem. Ausente => null, sem inventar dados.
-            caixas = {
-                "pessoa": [int(v) for v in posicao_operario],
-                "capacete": [int(v) for v in box_capacete] if box_capacete else None,
-                "colete": [int(v) for v in box_colete] if box_colete else None,
-            }
-            caixas_json = json.dumps(caixas)
-
-            cursor.execute(sql, (time.strftime("%Y-%m-%dT%H:%M:%S"), tipo_infracao, px, py, conf_pessoa, conf_capacete, conf_colete, caminho_salvar, caixas_json))
-    
-            conexao.commit()
-            
-        except sqlite3.Error as e:
-            mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
-            print(mensagem)
-            servidor.enviar_log(mensagem)
-
-        finally:
-            if conexao:
-                conexao.close()
-
-        mensagem = "[SUCESSO]: Imagem salva!"
+    except OSError as erro:
+        mensagem = f"[ERRO]: Falha ao gravar a evidencia | detalhes do erro: {erro}"
         print(mensagem)
         servidor.enviar_log(mensagem)
+        return []
+
+    conexao = None
+    ids_criados = []
+    try:
+        conexao = sqlite3.connect(CAMINHO_BANCO)
+        cursor = conexao.cursor()
+
+        sql = """INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto, caixas)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+
+        for registro in registros:
+            posicao = registro["posicao_operario"]
+            px = (posicao[0] + posicao[2]) / 2
+            py = (posicao[1] + posicao[3]) / 2
+            caixas_json = _montar_caixas(
+                posicao,
+                registro.get("box_capacete"),
+                registro.get("box_colete"),
+                cena,
+                cena_id,
+            )
+            cursor.execute(
+                sql,
+                (
+                    time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(agora)),
+                    registro["tipo_infracao"],
+                    px,
+                    py,
+                    registro.get("conf_pessoa"),
+                    registro.get("conf_capacete"),
+                    registro.get("conf_colete"),
+                    caminho_salvar,
+                    caixas_json,
+                ),
+            )
+            ids_criados.append(cursor.lastrowid)
+
+        conexao.commit()
+
+    except sqlite3.Error as erro:
+        if conexao:
+            conexao.rollback()
+        mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {erro}"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
+        ids_criados = []
+    finally:
+        if conexao:
+            conexao.close()
+
+    if ids_criados:
+        mensagem = f"[SUCESSO]: Cena salva com {len(ids_criados)} ocorrencia(s)!"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
+
+    return ids_criados
+
+
+def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capacete, conf_colete, frame, box_capacete=None, box_colete=None, operarios_cena=None):
+    """Persiste uma ocorrencia unica (mantido por retrocompatibilidade).
+
+    Novos codigos devem preferir ``salvar_cena``, que grava uma unica foto
+    quando varios trabalhadores aparecem irregulares no mesmo frame.
+    """
+    registro = {
+        "tipo_infracao": tipo_infracao,
+        "posicao_operario": posicao_operario,
+        "conf_pessoa": conf_pessoa,
+        "conf_capacete": conf_capacete,
+        "conf_colete": conf_colete,
+        "box_capacete": box_capacete,
+        "box_colete": box_colete,
+    }
+    salvar_cena(frame, [registro], operarios_cena)
 
 def pegar_foto(nome_foto: str):
     caminho_foto = os.path.join(PASTA_FOTOS, os.path.basename(nome_foto))
@@ -187,16 +243,52 @@ def excluir_ocorrencia(ocorrencia_id):
             conexao.close()
 
     foto_excluida = False
+    outras_referencias = 0
     if caminho_foto:
         caminho_seguro = os.path.join(PASTA_FOTOS, os.path.basename(caminho_foto))
+
+        # Protecao de foto compartilhada: a mesma evidencia pode alimentar
+        # varias ocorrencias da cena. O arquivo so sai do disco quando a
+        # ultima referencia desaparecer. A comparacao usa o NOME DO ARQUIVO
+        # (basename) para ignorar variacoes de caminho/separador que nao
+        # mudam a identidade da evidencia.
+        alvo = os.path.basename(caminho_seguro)
+        conexao = None
         try:
-            if os.path.isfile(caminho_seguro):
-                os.remove(caminho_seguro)
-                foto_excluida = True
-        except OSError as erro:
-            mensagem = f"[AVISO]: Ocorrência {ocorrencia_id} excluída, mas a foto não pôde ser removida: {erro}"
+            conexao = sqlite3.connect(CAMINHO_BANCO)
+            cursor = conexao.cursor()
+            caminhos = cursor.execute(
+                "SELECT DISTINCT caminho_foto FROM ocorrencias"
+            ).fetchall()
+            outras_referencias = sum(
+                1
+                for (c,) in caminhos
+                if c and os.path.basename(c) == alvo
+            )
+        except sqlite3.Error as erro:
+            mensagem = f"[AVISO]: Nao foi possivel verificar referencias da foto: {erro}"
             print(mensagem)
             servidor.enviar_log(mensagem)
+        finally:
+            if conexao:
+                conexao.close()
+
+        if outras_referencias > 0:
+            mensagem = (
+                f"[BANCO]: Ocorrencia {ocorrencia_id} descartada; evidencia mantida "
+                f"por ainda haver {outras_referencias} ocorrencia(s) na mesma foto."
+            )
+            print(mensagem)
+            servidor.enviar_log(mensagem)
+        else:
+            try:
+                if os.path.isfile(caminho_seguro):
+                    os.remove(caminho_seguro)
+                    foto_excluida = True
+            except OSError as erro:
+                mensagem = f"[AVISO]: Ocorrencia {ocorrencia_id} excluida, mas a foto nao pode ser removida: {erro}"
+                print(mensagem)
+                servidor.enviar_log(mensagem)
 
     mensagem = "Ocorrência descartada com sucesso."
     print(f"[BANCO]: {mensagem}")

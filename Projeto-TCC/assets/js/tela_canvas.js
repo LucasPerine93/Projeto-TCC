@@ -78,7 +78,8 @@ canvas.addEventListener("mouseup", (e) => {
 });
 
 ui.on_message("box_risco", (data) => {
-  if (!data.length || data.length !== 4) {
+  // data pode chegar null/vazio quando a área é limpa no servidor.
+  if (!Array.isArray(data) || data.length !== 4) {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     return;
   }

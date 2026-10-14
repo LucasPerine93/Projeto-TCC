@@ -1611,3 +1611,97 @@ h1 .ic {
     grid-template-columns: 1fr;
   }
 }
+
+/* ==========================================================================
+   MÚLTIPLOS TRABALHADORES POR CENA
+   ========================================================================== */
+
+/* Indicador de várias ocorrências na mesma fotografia (rodapé do cartão). */
+.foto-card-cena {
+  flex-basis: 100%;
+  margin-top: 2px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #fbbf24;
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: 999px;
+  padding: 1px 8px;
+  text-align: center;
+}
+
+/* Seletor de trabalhador no modal. */
+.seletor-trabalhador {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  padding: 6px 2px 2px;
+}
+
+.seletor-trabalhador[hidden] {
+  display: none;
+}
+
+.seletor-titulo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #93a4c4;
+}
+
+.seletor-botoes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.seletor-botao {
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #c7d4ea;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  padding: 5px 14px;
+  transition: background 0.15s ease, border-color 0.15s ease,
+    color 0.15s ease, transform 0.15s ease;
+}
+
+.seletor-botao:hover {
+  background: rgba(56, 189, 248, 0.16);
+  border-color: rgba(56, 189, 248, 0.45);
+  transform: translateY(-1px);
+}
+
+.seletor-botao.ativo {
+  color: #04121f;
+  background: #38bdf8;
+  border-color: #38bdf8;
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
+/* Destaque do trabalhador selecionado e recuo dos demais da mesma cena. */
+.caixa-selecionada {
+  box-shadow: 0 0 0 2px currentColor, 0 0 18px 2px currentColor;
+  opacity: 1;
+  z-index: 2;
+}
+
+.caixa-secundaria {
+  border-style: dashed;
+  opacity: 0.45;
+}
+
+/* Caixa da pessoa fica clicável quando há mais de um trabalhador na cena. */
+#foto-moldura .caixa-pessoa[style*="cursor: pointer"]:hover {
+  border-width: 3px;
+}
