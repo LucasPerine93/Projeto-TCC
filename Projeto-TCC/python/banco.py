@@ -1,6 +1,7 @@
 from fastapi.responses import FileResponse
 from collections import Counter
 import json
+import math
 import servidor
 import sqlite3
 import time
@@ -77,6 +78,46 @@ def inicializar_banco(caminho_banco: str) -> bool:
         if conexao:
             conexao.close()
 
+def _to_float(val, default=0.0):
+    """Converte ``val`` em ``float`` nativo ou devolve ``default``.
+
+    Trata ``None``, ``bool``, ``int``, ``float``, strings (com virgula decimal),
+    escalares NumPy (``np.floating``/``np.integer``) e ``np.ndarray`` de um
+    unico elemento. Arrays maiores, listas, NaN e infinito retornam ``default``.
+    """
+    if val is None:
+        return default
+
+    if hasattr(val, "item") and hasattr(val, "dtype"):
+        try:
+            if getattr(val, "size", 1) != 1:
+                return default
+            val = val.item()
+        except Exception:
+            return default
+
+    if isinstance(val, bool):
+        return float(val)
+
+    if isinstance(val, str):
+        texto = val.strip().replace(",", ".")
+        if not texto:
+            return default
+        try:
+            val = float(texto)
+        except ValueError:
+            return default
+
+    try:
+        resultado = float(val)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+    if math.isnan(resultado) or math.isinf(resultado):
+        return default
+    return resultado
+
+
 def _to_lista(valor, inteiro: bool = False):
     """Converte caixas/numéricos em ``list[float]`` (ou ``list[int]``) nativos,
     descartando NumPy e garantindo que o JSON foge do TypeError."""
@@ -88,20 +129,22 @@ def _to_lista(valor, inteiro: bool = False):
     except Exception:
         pass
     if isinstance(valor, (list, tuple)):
-        return [int(v) if inteiro else float(v) for v in valor]
-    try:
-        return int(valor) if inteiro else float(valor)
-    except (TypeError, ValueError):
+        itens = [_to_float(v, None) for v in valor]
+        if any(v is None for v in itens):
+            return None
+        return [int(v) for v in itens] if inteiro else itens
+    numero = _to_float(valor, None)
+    if numero is None:
         return None
+    return int(numero) if inteiro else numero
 
 
 def _montar_caixas(posicao_operario, box_capacete, box_colete, cena=None, cena_id=None):
     """Caixas do trabalhador + lista completa da cena, num unico JSON.
 
-    Exclusividade: quando não há cena registrada, ``operarios`` sai vazio em
-    vez de servi-lo como repositório mutável — a lista só veIOS carregar no
-    front-end conforme o cliente registra quais operários ficaram em risco na
-   quele frame e a adere a essa copia.
+    ``operarios`` recebe a lista de todos os trabalhadores vistos no frame
+    (``cena``); quando nao ha cena registrada, sai como lista vazia. Assim o
+    front-end consegue destacar, na mesma foto, os demais operarios do frame.
     """
     caixas = {
         "pessoa": _to_lista(posicao_operario, inteiro=True),
@@ -135,8 +178,9 @@ def salvar_cena(frame, registros, cena=None):
     os.makedirs(PASTA_FOTOS, exist_ok=True)
 
     agora = time.time()
-    cena_id = f"cena_{int(agora)}"
-    nome_imagem = f"foto_{int(agora)}_{registros[0]['tipo_infracao'].replace(' ', '_')}.jpg"
+    agora_ms = int(agora * 1000)  # ms: evita colisao de nome/id no mesmo segundo
+    cena_id = f"cena_{agora_ms}"
+    nome_imagem = f"foto_{agora_ms}_{registros[0]['tipo_infracao'].replace(' ', '_')}.jpg"
     caminho_salvar = os.path.join(PASTA_FOTOS, nome_imagem)
 
     try:
@@ -162,9 +206,9 @@ def salvar_cena(frame, registros, cena=None):
             px = (_to_float(posicao[0]) + _to_float(posicao[2])) / 2
             py = (_to_float(posicao[1]) + _to_float(posicao[3])) / 2
             caixas_json = _montar_caixas(
-                [float(v) for v in posicao],
-                _to_float(registro.get("box_capacete")),
-                _to_float(registro.get("box_colete")),
+                posicao,
+                registro.get("box_capacete"),
+                registro.get("box_colete"),
                 cena,
                 cena_id,
             )
@@ -175,9 +219,9 @@ def salvar_cena(frame, registros, cena=None):
                     registro["tipo_infracao"],
                     px,
                     py,
-                    _to_float(registro.get("conf_pessoa")),
-                    _to_float(registro.get("conf_capacete")),
-                    _to_float(registro.get("conf_colete")),
+                    _to_float(registro.get("conf_pessoa"), None),  # None -> NULL
+                    _to_float(registro.get("conf_capacete"), None),  # None -> NULL
+                    _to_float(registro.get("conf_colete"), None),  # None -> NULL
                     caminho_salvar,
                     caixas_json,
                 ),
@@ -204,23 +248,6 @@ def salvar_cena(frame, registros, cena=None):
 
     return ids_criados
 
-
-def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capacete, conf_colete, frame, box_capacete=None, box_colete=None, operarios_cena=None):
-    """Persiste uma ocorrencia unica (mantido por retrocompatibilidade).
-
-    Novos codigos devem preferir ``salvar_cena``, que grava uma unica foto
-    quando varios trabalhadores aparecem irregulares no mesmo frame.
-    """
-    registro = {
-        "tipo_infracao": tipo_infracao,
-        "posicao_operario": posicao_operario,
-        "conf_pessoa": conf_pessoa,
-        "conf_capacete": conf_capacete,
-        "conf_colete": conf_colete,
-        "box_capacete": box_capacete,
-        "box_colete": box_colete,
-    }
-    salvar_cena(frame, [registro], operarios_cena)
 
 def pegar_foto(nome_foto: str):
     caminho_foto = os.path.join(PASTA_FOTOS, os.path.basename(nome_foto))

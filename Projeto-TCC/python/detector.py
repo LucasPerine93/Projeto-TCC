@@ -3,10 +3,8 @@ from arduino.app_peripherals.camera import Camera
 
 from dataclasses import dataclass
 import math
-import os
-from pathlib import Path
-import sys
 import time
+import traceback
 
 import servidor
 import banco
@@ -50,47 +48,55 @@ class Operario:
     track_id: int | None = None
 
 
-def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame=None):
+# Faixa vertical do corpo (fração da altura da caixa da pessoa, medida a
+# partir do topo) onde cada EPI deve ter o seu centro.
+ZONA_CAPACETE = (-0.15, 0.35)
+ZONA_COLETE = (0.36, 0.80)
 
-    lista_operarios = []
 
-    pessoas_detectadas = _get_pessoa(specs_frame)
-    if not pessoas_detectadas:
-        return
+# ---------------------------------------------------------------------------
+# Conversões seguras (NumPy -> tipos nativos)
+# ---------------------------------------------------------------------------
+def _to_float(val, default=0.0):
+    """Converte ``val`` em ``float`` nativo ou devolve ``default``.
 
-    for dados_pessoa in pessoas_detectadas:
-        novo_operario = Operario(
-            box_xyxy=_to_xyxy(dados_pessoa, ["bounding_box_xyxy"], 0.0),
-            conf_pessoa=_get_conf(dados_pessoa),
-        )
-        lista_operarios.append(novo_operario)
+    Trata ``None``, ``bool``, ``int``, ``float``, strings (com vírgula decimal),
+    escalares NumPy (``np.floating``/``np.integer``) e ``np.ndarray`` com um
+    único elemento. Arrays maiores, listas, NaN e infinito retornam ``default``.
+    """
+    if val is None:
+        return default
 
-    # Cada EPI é atribuído a apenas UM operário do frame (exclusividade),
-    # no operário mais próximo que o EPI intersecta.
-    box_capacete, operario_capacete = _atribuir_epi(
-        specs_frame.get("helmet", []), lista_operarios, (-0.15, 0.35), "capacete"
-    )
-    if box_capacete is not None and operario_capacete is not None:
-        operario_capacete.tem_capacete = True
-        operario_capacete.conf_capacete = _get_conf(box_capacete)
-        operario_capacete.box_capacete = list(box_capacete)
+    # NumPy: escalar (np.float32, np.int64...) ou array de 1 elemento.
+    # Não importa o numpy aqui: ``size``/``item`` bastam (duck typing).
+    if hasattr(val, "item") and hasattr(val, "dtype"):
+        try:
+            if getattr(val, "size", 1) != 1:
+                return default
+            val = val.item()
+        except Exception:
+            return default
 
-    box_colete, operario_colete = _atribuir_epi(
-        specs_frame.get("vest", []), lista_operarios, (0.36, 0.80), "colete"
-    )
-    if box_colete is not None and operario_colete is not None:
-        operario_colete.tem_colete = True
-        operario_colete.conf_colete = _get_conf(box_colete)
-        operario_colete.box_colete = list(box_colete)
+    if isinstance(val, bool):
+        return float(val)
 
-    if area_risco_ativa:
-        for operario in lista_operarios:
-            if verificar_area_risco(box_area_risco, operario.box_xyxy):
-                operario.risco_detectado = True
+    if isinstance(val, str):
+        texto = val.strip().replace(",", ".")
+        if not texto:
+            return default
+        try:
+            val = float(texto)
+        except ValueError:
+            return default
 
-    analisar_seguranca(lista_operarios)
-    filtrar_salvamento(lista_operarios, frame)
-    return lista_operarios
+    try:
+        resultado = float(val)
+    except (TypeError, ValueError, OverflowError):
+        return default
+
+    if math.isnan(resultado) or math.isinf(resultado):
+        return default
+    return resultado
 
 
 def _to_xyxy(dado: dict, chaves: list[str], default: float) -> list[float]:
@@ -114,25 +120,25 @@ def _to_xyxy(dado: dict, chaves: list[str], default: float) -> list[float]:
     if isinstance(valor, (list, tuple)):
         if len(valor) < 4:
             return [default, default, default, default]
-        return [float(valor[0]), float(valor[1]), float(valor[2]), float(valor[3])]
+        return [_to_float(valor[i], default) for i in range(4)]
 
     return [default, default, default, default]
 
 
 def _get_conf(dado: dict) -> float:
     """Encontra a chave de confiança (``confidence``) com fallback para
-    ``score``/``conf`` e garante float (ou 0.5 quando não existir)."""
+    ``score``/``conf``. Retorna ``0.0`` quando ausente, ``None`` ou inválida:
+    nunca inventa uma confiança."""
+    if not isinstance(dado, dict):
+        return 0.0
     for chave in ("confidence", "score", "conf"):
         if chave in dado and dado[chave] is not None:
-            try:
-                return float(dado[chave])
-            except (TypeError, ValueError):
-                return 0.5
-    return 0.5
+            return _to_float(dado[chave], 0.0)
+    return 0.0
 
 
 def _get_pessoa(specs_frame: dict) -> list[dict]:
-    """Normaliza a chave da lista de pessoas (``person``/``people``/``detections``)
+    """Normaliza a chave da lista de pessoas (``person``/``people``)
     e os campos das mesmas, de forma a não quebrar a lib YOLOX de produção."""
     pessoas = specs_frame.get("person", specs_frame.get("people", []))
     if pessoas is None:
@@ -140,45 +146,125 @@ def _get_pessoa(specs_frame: dict) -> list[dict]:
     return [p for p in pessoas if isinstance(p, dict)]
 
 
-def _atribuir_epi(epis, operarios, corpo, _tipo):
-    """Atribui **uma** caixa de EPI a **um** único operário do frame.
+# ---------------------------------------------------------------------------
+# Pipeline principal
+# ---------------------------------------------------------------------------
+def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame=None):
+    """Monta os operários do frame, associa EPIs, avalia risco e persiste.
 
-    Regras:
-    * só considera operários com caixa ``box_xyxy`` válida;
-    * só aceita o EPI sobre a região corporal indicada (topo para capacete,
-      tronco para colete);
-    * entre os operários aceitáveis, a escolha é o menor centro-distância;
-    * o EPI é gasto ou com o operário selecionado, ou sem operário, e não
-      cai em mais de um seguido.
+    Cada etapa final (log e salvamento) é isolada: uma falha em
+    ``analisar_seguranca`` não impede ``filtrar_salvamento`` de gravar a
+    evidência, e vice-versa.
+    """
+    lista_operarios = []
 
-    Retorna ``(box_epi ou None, operario ou None)``."""
-    epi_unico = None
-    operario_unico = None
-    menor_distancia = float("inf")
+    pessoas_detectadas = _get_pessoa(specs_frame)
+    if not pessoas_detectadas:
+        return lista_operarios
 
+    for dados_pessoa in pessoas_detectadas:
+        novo_operario = Operario(
+            box_xyxy=_to_xyxy(dados_pessoa, ["bounding_box_xyxy"], 0.0),
+            conf_pessoa=_get_conf(dados_pessoa),
+        )
+        lista_operarios.append(novo_operario)
+
+    # Cada EPI vai para UM operário e cada operário recebe no máximo UM EPI
+    # de cada tipo (pareamento guloso por menor distância).
+    for dado_epi, operario in _atribuir_epi(specs_frame.get("helmet") or [], lista_operarios, ZONA_CAPACETE):
+        operario.tem_capacete = True
+        operario.conf_capacete = _get_conf(dado_epi)
+        operario.box_capacete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
+
+    for dado_epi, operario in _atribuir_epi(specs_frame.get("vest") or [], lista_operarios, ZONA_COLETE):
+        operario.tem_colete = True
+        operario.conf_colete = _get_conf(dado_epi)
+        operario.box_colete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
+
+    if area_risco_ativa:
+        for operario in lista_operarios:
+            if verificar_area_risco(box_area_risco, operario.box_xyxy):
+                operario.risco_detectado = True
+
+    _executar_seguro("analisar_seguranca", analisar_seguranca, lista_operarios)
+    _executar_seguro("filtrar_salvamento", filtrar_salvamento, lista_operarios, frame)
+    return lista_operarios
+
+
+def _executar_seguro(nome, funcao, *args):
+    """Executa uma etapa do pipeline sem deixar a exceção subir ao callback."""
+    try:
+        return funcao(*args)
+    except Exception as exc:
+        _registrar_falha(f"{nome} falhou: {exc!r}")
+        return None
+
+
+def _registrar_falha(mensagem: str):
+    texto = f"[ERRO]: {mensagem}"
+    print(texto)
+    traceback.print_exc()
+    try:
+        servidor.enviar_log(texto)
+    except Exception:
+        pass  # o log para a interface nunca pode derrubar a deteccao
+
+
+def _atribuir_epi(epis, operarios, corpo):
+    """Pareia EPIs e operários de forma exclusiva (guloso por distância).
+
+    1. gera todos os pares válidos ``(distância, idx_epi, idx_operario)`` — o
+       centro do EPI precisa cair dentro da largura da pessoa e na faixa
+       vertical ``corpo``;
+    2. ordena por distância crescente;
+    3. percorre a lista consumindo cada EPI e cada operário no máximo uma vez.
+
+    Retorna uma lista de ``(dado_epi, operario)`` (``dado_epi`` é o dict
+    original da detecção, de onde saem caixa e confiança).
+    """
+    boxes_epi = []
     for dado in epis:
         if not isinstance(dado, dict):
+            boxes_epi.append(None)
             continue
-        box_epi = _to_xyxy(dado, ["bounding_box_xyxy"], 0.0)
-        if box_epi == [0.0, 0.0, 0.0, 0.0]:
-            continue
-        centro_epi = ((box_epi[0] + box_epi[2]) / 2, (box_epi[1] + box_epi[3]) / 2)
+        box = _to_xyxy(dado, ["bounding_box_xyxy"], 0.0)
+        boxes_epi.append(None if box == [0.0, 0.0, 0.0, 0.0] else box)
 
-        for operario in operarios:
-            box_pessoa = _to_xyxy({"bounding_box_xyxy": operario.box_xyxy}, ["bounding_box_xyxy", "box_xyxy"], 0.0)
-            if box_pessoa == [0.0, 0.0, 0.0, 0.0]:
+    boxes_op = []
+    for operario in operarios:
+        box = list(operario.box_xyxy)
+        boxes_op.append(None if box == [0.0, 0.0, 0.0, 0.0] else box)
+
+    pares = []
+    for idx_epi, box_epi in enumerate(boxes_epi):
+        if box_epi is None:
+            continue
+        centro_epi = calcular_centro(box_epi)
+        for idx_op, box_op in enumerate(boxes_op):
+            if box_op is None:
                 continue
-            if verificar_epi(box_epi, box_pessoa, corpo):
-                centro_pessoa = calcular_centro(box_pessoa)
-                distancia = calcular_distacia(centro_epi, centro_pessoa)
-                if distancia < menor_distancia:
-                    menor_distancia = distancia
-                    epi_unico = box_epi
-                    operario_unico = operario
+            if verificar_epi(box_epi, box_op, corpo):
+                distancia = math.dist(centro_epi, calcular_centro(box_op))
+                pares.append((distancia, idx_epi, idx_op))
 
-    return epi_unico, operario_unico
+    pares.sort()
+
+    epis_usados = set()
+    operarios_usados = set()
+    atribuicoes = []
+    for _distancia, idx_epi, idx_op in pares:
+        if idx_epi in epis_usados or idx_op in operarios_usados:
+            continue
+        epis_usados.add(idx_epi)
+        operarios_usados.add(idx_op)
+        atribuicoes.append((epis[idx_epi], operarios[idx_op]))
+
+    return atribuicoes
+
+
 ultimo_alerta = 0.0
 TEMPO_ESPERA = 5
+
 
 def analisar_seguranca(lista_de_operarios):
 
@@ -213,6 +299,7 @@ def analisar_seguranca(lista_de_operarios):
 
         ultimo_alerta = tempo_atual
 
+
 # ---------------------------------------------------------------------------
 # Rastreamento temporario por trilha (sem identificacao civil permanente)
 # ---------------------------------------------------------------------------
@@ -225,8 +312,11 @@ def analisar_seguranca(lista_de_operarios):
 LIMIAR_IOU = 0.15          # IoU minimo para considerar a mesma trajetoria
 LIMIAR_DISTANCIA = 0.6     # fracao da menor diagonal entre as duas caixas
 MARGEM_AMBIGUIDADE = 0.05  # diferenca minima de placar para descartar empate
-TEMPO_VIDA_TRILHA = 5.0    # segundos sem ver a pessoa para esquecer a trilha
 TEMPO_ESPERA_SALVAR = 20   # cooldown POR trilha e POR tipo de infracao
+# A trilha vive pelo menos tanto quanto o cooldown: se a pessoa some atras de
+# um obstaculo e volta antes do cooldown acabar, mantem o mesmo track_id e nao
+# gera ocorrencia duplicada.
+TEMPO_VIDA_TRILHA = float(TEMPO_ESPERA_SALVAR)
 
 _proximo_track_id = 1
 _trilhas_ativas = {}       # track_id -> {"box": tuple, "visto_em": float}
@@ -341,6 +431,7 @@ def associar_trilhas(lista_de_operarios, agora):
 
     return lista_de_operarios
 
+
 def classificar_infracao(operario):
     """Tipo de infracao do operario, ou None quando estiver conforme.
 
@@ -368,9 +459,9 @@ def montar_cena(lista_de_operarios):
             "track_id": outro.track_id,
             "tipo_infracao": classificar_infracao(outro),
             "risco_detectado": bool(outro.risco_detectado),
-            "conf_pessoa": _to_float(outro.conf_pessoa),
-            "conf_capacete": _to_float(outro.conf_capacete),
-            "conf_colete": _to_float(outro.conf_colete),
+            "conf_pessoa": _to_float(outro.conf_pessoa, None),
+            "conf_capacete": _to_float(outro.conf_capacete, None),
+            "conf_colete": _to_float(outro.conf_colete, None),
             "pessoa": list(outro.box_xyxy),
             "capacete": list(outro.box_capacete) if outro.box_capacete else None,
             "colete": list(outro.box_colete) if outro.box_colete else None,
@@ -411,7 +502,7 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
         return
 
     # Lib antiga / stubs de teste: sem frame nao ha foto para persistir,
-    # mas o restante do fluxo (trilhas, cooldown, integracao) continua.
+    # mas o restante do fluxo (trilhas, cooldown) continua.
     if frame is None:
         return
 
@@ -419,9 +510,9 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
         {
             "tipo_infracao": tipo,
             "posicao_operario": list(operario.box_xyxy),
-            "conf_pessoa": _to_float(operario.conf_pessoa),
-            "conf_capacete": _to_float(operario.conf_capacete),
-            "conf_colete": _to_float(operario.conf_colete),
+            "conf_pessoa": _to_float(operario.conf_pessoa, None),
+            "conf_capacete": _to_float(operario.conf_capacete, None),
+            "conf_colete": _to_float(operario.conf_colete, None),
             "box_capacete": list(operario.box_capacete) if operario.box_capacete else None,
             "box_colete": list(operario.box_colete) if operario.box_colete else None,
         }
@@ -441,6 +532,9 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
             del _ultima_ocorrencia[chave]
 
 
+# ---------------------------------------------------------------------------
+# Geometria
+# ---------------------------------------------------------------------------
 def verificar_area_risco(box_risco, box_pessoa) -> bool:
     if not box_risco or not box_pessoa:
         return False
@@ -463,113 +557,27 @@ def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
     return ox1 <= centro_x_epi <= ox2 and zona_topo <= centro_y_epi <= zona_base
 
 
-def calcular_distacia(posicao1, posicao2) -> float:
-    return math.dist(posicao1, posicao2)
-
-
-def calcular_centro_com_regiao(box_operario, box_epi, regiao) -> tuple:
-    ox1, oy1, ox2, oy2 = box_operario
-    ex1, ey1, ex2, ey2 = box_epi
-    altura = abs(oy2 - oy1)
-    y_epi = oy1 + altura * regiao
-    centro_operario = ((ox1 + ox2) / 2, y_epi)
-    centro_epi = ((ex1 + ex2) / 2, (ey1 + ey2) / 2)
-    return centro_operario, centro_epi
-
-
+# ---------------------------------------------------------------------------
+# Callback da camera
+# ---------------------------------------------------------------------------
 def operario_detectado(specs_frame, frame=None):
     """Callback compativel com a lib nova (dict + frame) e a antiga (so dict).
 
-    Sem frame (lib antiga 6735581): o fluxo observacional continua
-    (analise + integracao/EventLog/ponte), mas nenhuma foto e persistida.
+    Toda a cadeia (organizacao, analise, salvamento) roda dentro do
+    ``try/except``: o callback da camera nunca pode cair. Sem frame (lib antiga
+    6735581) o fluxo continua, mas nenhuma foto e persistida.
     """
-    risco = servidor.risco
-    box_risco = servidor.box_risco
-    operarios = organizar_dado(specs_frame, box_risco, risco, frame)
-
-    if _processar_operarios is None:
-        return operarios
     try:
-        # O adapter usa o veredicto risco_detectado/tem_* ja definido acima.
-        # specs_frame e preservado como payload bruto da ingestao.
-        resumo = _processar_operarios(
-            operarios,
-            specs_frame=specs_frame,
-            box_risco=box_risco,
-            area_ativa=bool(risco),
-        )
-        if not resumo.get("ok", False):
-            print("[VISION] integracao observacional concluiu com erro registrado")
-    except Exception as exc:  # defesa extra: callback da camera nunca cai
-        print(f"[VISION] integracao observacional falhou no callback: {exc!r}")
-    return operarios
+        return organizar_dado(specs_frame, servidor.box_risco, servidor.risco, frame)
+    except Exception as exc:
+        _registrar_falha(f"callback de deteccao falhou: {exc!r}")
+        return []
 
 
 def _operario_detectado_legado(specs_frame):
     """Wrapper de 1 argumento para a lib antiga (on_detect_all exige 1 arg)."""
     return operario_detectado(specs_frame, None)
 
-
-# ---------------------------------------------------------------------------
-# Integracao observacional: carregamento portavel e degradacao explicita.
-# Nao importa a State Machine de montagem e nao refaz geometria do detector.
-# ---------------------------------------------------------------------------
-def _raiz_mvp():
-    raiz_env = os.environ.get("TCC_MVP_ROOT")
-    if raiz_env:
-        candidato = Path(raiz_env)
-        if (candidato / "vision_integration" / "integracao_lucas.py").is_file():
-            return candidato
-
-    atual = Path(__file__).resolve().parent
-    for _ in range(6):
-        candidato = atual / "procedimento-mvp"
-        if (candidato / "vision_integration" / "integracao_lucas.py").is_file():
-            return candidato
-        if (atual / "vision_integration" / "integracao_lucas.py").is_file():
-            return atual
-        atual = atual.parent
-    return None
-
-
-_processar_operarios = None
-_erro_integracao = None
-
-
-def _inicializar_integracao():
-    """Configura o hook uma vez; erro nao interrompe a visao nem fica oculto."""
-    global _processar_operarios, _erro_integracao
-    raiz = _raiz_mvp()
-    if raiz is None:
-        _erro_integracao = "procedimento-mvp/vision_integration nao encontrado"
-        print(f"[VISION] integracao observacional indisponivel: {_erro_integracao}")
-        return
-
-    for pasta in (raiz, raiz / "event_arch"):
-        texto = str(pasta)
-        if texto not in sys.path:
-            sys.path.insert(0, texto)
-    try:
-        from vision_integration import integracao_lucas
-        from vision_integration.detector_bridge import DetectorIngestBridge
-        from vision_integration.occurrence import OccurrenceTracker
-        from event_debounce import EventDebounce
-        from event_log import EventLog
-
-        integracao_lucas.configurar(
-            log=EventLog(raiz / "data" / "procedure_events.jsonl"),
-            debounce=EventDebounce(),
-            ponte=DetectorIngestBridge(),
-            occurrence=OccurrenceTracker(),
-        )
-        _processar_operarios = integracao_lucas.processar_operarios
-        print("[VISION] integracao observacional configurada -> Operario -> adapter")
-    except Exception as exc:  # detector continua funcionando sem o MVP
-        _erro_integracao = repr(exc)
-        print(f"[VISION] integracao observacional indisponivel: {_erro_integracao}")
-
-
-_inicializar_integracao()
 
 try:
     deteccao.on_detect_all(operario_detectado)
