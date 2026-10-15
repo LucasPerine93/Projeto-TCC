@@ -9,6 +9,23 @@ const botaoFecharImagemAmpliada = document.getElementById("fechar-dados-imagem")
 const botaoDescartarOcorrencia = document.getElementById("descartar-ocorrencia");
 const textoDescartarOcorrencia = document.getElementById("texto-descartar-ocorrencia");
 const botoesFiltro = [...document.querySelectorAll(".filtro-galeria")];
+const botaoMarcarCaixas = document.getElementById("btn-marcar-caixas");
+const textoMarcarCaixas = document.getElementById("texto-marcar-caixas");
+
+if (botaoMarcarCaixas) {
+  botaoMarcarCaixas.addEventListener("click", (evento) => {
+    evento.stopPropagation();
+    const moldura = document.getElementById("foto-moldura");
+    if (!moldura) return;
+    const ocultas = moldura.classList.toggle("marcacoes-ocultas");
+    if (textoMarcarCaixas) {
+      textoMarcarCaixas.textContent = ocultas ? "Mostrar marcações" : "Ocultar marcações";
+    }
+    botaoMarcarCaixas.title = ocultas
+      ? "Mostrar as marcações de detecção na foto"
+      : "Ocultar ou mostrar as marcações de detecção na foto";
+  });
+}
 
 let ocorrenciasGaleria = [];
 let cenasGaleria = [];
@@ -295,19 +312,24 @@ function criarCaixaDeteccao(rotulo, caixa, confianca, classeCss, extra) {
     elemento.dataset.trabalhador = String(opcoes.indice);
   }
   elemento.dataset.caixa = JSON.stringify(caixa);
-  const etiqueta = document.createElement("span");
-  etiqueta.className = "caixa-deteccao-rotulo";
-  const textoConfianca =
-    confianca === null || confianca === undefined || Number.isNaN(Number(confianca))
-      ? ""
-      : ` ${(Number(confianca) * 100).toFixed(0)}%`;
-  etiqueta.textContent = `${rotulo}${textoConfianca}`;
-  elemento.appendChild(etiqueta);
+  // Etiqueta pode ser suprimida (modo "Todos") para não poluir a foto.
+  if (!opcoes.semEtiqueta) {
+    const etiqueta = document.createElement("span");
+    etiqueta.className = "caixa-deteccao-rotulo";
+    const textoConfianca =
+      confianca === null || confianca === undefined || Number.isNaN(Number(confianca))
+        ? ""
+        : ` ${(Number(confianca) * 100).toFixed(0)}%`;
+    etiqueta.textContent = `${rotulo}${textoConfianca}`;
+    elemento.appendChild(etiqueta);
+  }
   return elemento;
 }
 
-/** Itens de caixa a desenhar: todos os trabalhadores da cena. */
-function coletarItensCaixa(fonte) {
+/** Itens de caixa a desenhar: todos os trabalhadores da cena.
+ *  No modo "Todos" desenha só as caixas de pessoa com tag #N (limpo);
+ *  no modo individual desenha pessoa + EPI completos do trabalhador. */
+function coletarItensCaixa(fonte, modoTodos = false) {
   if (Array.isArray(fonte?.trabalhadores)) {
     // O seletor [Trabalhador N] indexa `selecionaveis` (apenas ocorrências
     // registradas), enquanto as caixas varrem `trabalhadores` (todos os vistos
@@ -329,6 +351,7 @@ function coletarItensCaixa(fonte) {
           : "";
       const itens = [{
         rotulo: "Pessoa",
+        tagNumero: `#${indice + 1}`,
         caixa: trabalhador.pessoa,
         confianca: trabalhador.conf_pessoa,
         classe: "caixa-pessoa",
@@ -336,13 +359,13 @@ function coletarItensCaixa(fonte) {
         indice,
         ehPessoa: true,
       }];
-      if (trabalhador.capacete) {
+      if (!modoTodos && trabalhador.capacete) {
         itens.push({
           rotulo: "Capacete", caixa: trabalhador.capacete,
           confianca: trabalhador.conf_capacete, classe: "caixa-capacete", estado, indice,
         });
       }
-      if (trabalhador.colete) {
+      if (!modoTodos && trabalhador.colete) {
         itens.push({
           rotulo: "Colete", caixa: trabalhador.colete,
           confianca: trabalhador.conf_colete, classe: "caixa-colete", estado, indice,
@@ -416,15 +439,20 @@ const observadoresCaixas = new WeakMap();
 function desenharCaixas(container, fonte, permitirSelecao = false) {
   // Desenha as caixas de TODOS os trabalhadores da cena sobre a imagem.
   // ``fonte`` pode ser uma cena (com ``trabalhadores``) ou uma ocorrência
-  // avulsa (retrocompatibilidade).
+  // avulsa (retrocompatibilidade). No modo "Todos" desenha só as caixas de
+  // pessoa com tag #N (sem etiquetas de EPI, para não poluir a foto).
   if (!container) return;
   container.querySelectorAll(".caixa-deteccao").forEach((el) => el.remove());
 
-  coletarItensCaixa(fonte).forEach((item) => {
+  const modoTodos = fonte?.modoTodos === true;
+  coletarItensCaixa(fonte, modoTodos).forEach((item) => {
     if (!item.caixa) return;
-    const elemento = criarCaixaDeteccao(item.rotulo, item.caixa, item.confianca, item.classe, {
+    const semEtiqueta = modoTodos && item.tagNumero ? true : false;
+    const rotuloFinal = modoTodos && item.tagNumero ? item.tagNumero : item.rotulo;
+    const elemento = criarCaixaDeteccao(rotuloFinal, item.caixa, modoTodos ? null : item.confianca, item.classe, {
       estado: item.estado,
       indice: item.indice,
+      semEtiqueta,
     });
 
     // Clicar na caixa da pessoa seleciona aquele trabalhador. O índice das
@@ -465,6 +493,19 @@ function desenharCaixas(container, fonte, permitirSelecao = false) {
 }
 
 
+function atualizarModoSeletor() {
+  const rotulo = document.getElementById("trabalhador-modo");
+  if (!rotulo || !cenaAberta) return;
+  const total = cenaAberta.total_registros ?? 0;
+  if (cenaAberta.modoTodos) {
+    rotulo.textContent = `Panorama da cena (${total} trabalhadores)`;
+  } else if (Number.isInteger(cenaAberta.selecionado) && cenaAberta.selecionado >= 0) {
+    rotulo.textContent = `Trabalhador ${cenaAberta.selecionado + 1} de ${total}`;
+  } else {
+    rotulo.textContent = "";
+  }
+}
+
 function montarSeletorTrabalhador() {
   const painel = document.getElementById("seletor-trabalhador");
   const botoes = document.getElementById("seletor-trabalhador-botoes");
@@ -473,18 +514,52 @@ function montarSeletorTrabalhador() {
   botoes.innerHTML = "";
   const total = cenaAberta.total_registros;
   painel.hidden = total <= 1;
+  if (total <= 1) {
+    return;
+  }
+
+  /** Cor do ponto de situação: vermelho = ausência de EPI, âmbar = invasão
+   *  de área de risco, verde = conformidade ("Com capacete e colete"). */
+  const corSituacao = (tipo) => {
+    const texto = String(tipo || "");
+    if (texto.includes("Sem ")) return "#ef4444";
+    if (texto.includes("área de risco") || texto.includes("area de risco")) return "#f59e0b";
+    return "#22c55e";
+  };
+
+  // Primeiro botão: "Todos (N)", ativo por padrão nas cenas múltiplas.
+  const botaoTodos = document.createElement("button");
+  botaoTodos.type = "button";
+  botaoTodos.className =
+    `seletor-botao seletor-todos${cenaAberta.selecionado === -1 ? " ativo" : ""}`;
+  botaoTodos.innerHTML = "";
+  botaoTodos.appendChild(document.createTextNode(`Todos (${total})`));
+  botaoTodos.title = `Ver todos os ${total} trabalhadores da cena`;
+  botaoTodos.addEventListener("click", (evento) => {
+    evento.stopPropagation();
+    selecionarTodos();
+  });
+  botoes.appendChild(botaoTodos);
 
   cenaAberta.selecionaveis.forEach((item, indice) => {
     const botao = document.createElement("button");
     botao.type = "button";
-    botao.className = `seletor-botao${indice === cenaAberta.selecionado ? " ativo" : ""}`;
-    botao.innerText = `Trabalhador ${indice + 1}`;
+    botao.className = `seletor-botao trabalhador-pill${indice === cenaAberta.selecionado ? " ativo" : ""}`;
+    botao.title = `Trabalhador ${indice + 1} - ${item?.ocorrencia?.tipo_infracao ?? "sem infração"}`;
+    const ponto = document.createElement("span");
+    ponto.className = "status-dot";
+    ponto.style.backgroundColor = corSituacao(item?.ocorrencia?.tipo_infracao ?? item?.trabalhador?.tipo_infracao);
+    ponto.setAttribute("aria-hidden", "true");
+    botao.appendChild(ponto);
+    botao.appendChild(document.createTextNode(`#${indice + 1}`));
     botao.addEventListener("click", (evento) => {
       evento.stopPropagation();
       selecionarTrabalhador(indice);
     });
     botoes.appendChild(botao);
   });
+
+  atualizarModoSeletor();
 }
 
 function preencherDetalhes(item) {
@@ -514,16 +589,75 @@ function preencherDetalhes(item) {
 export function abrirDetalhesCena(cena, indiceInicial = 0) {
   if (!cena) return;
   cenaAberta = cena;
-  cena.selecionado = indiceInicial;
+  // Cenas múltiplas abrem no modo "Todos (N)" por padrão (-1 = todos).
+  const indicePadrao =
+    cena.total_registros > 1 ? -1 : Math.max(0, indiceInicial);
+  cena.selecionado = indicePadrao;
+  cena.modoTodos = cena.total_registros > 1 && indicePadrao === -1;
 
   const moldura = document.getElementById("foto-moldura");
+  moldura.classList.remove("marcacoes-ocultas");
+  const textoMarcar = document.getElementById("texto-marcar-caixas");
+  if (textoMarcar) textoMarcar.textContent = "Ocultar marcações";
   imagemAmpliada.src = `/foto/${cena.caminho_foto}`;
   desenharCaixas(moldura, cena, true);
 
   montarSeletorTrabalhador();
-  preencherDetalhes(cena.selecionaveis[indiceInicial]);
+  if (cena.modoTodos) {
+    preencherResumoCena();
+  } else {
+    preencherDetalhes(cena.selecionaveis[Math.max(0, indicePadrao)]);
+  }
 
   document.getElementById("mostrar-dados-imagem").style.display = "block";
+}
+
+/** Entra no modo "Todos": resumo da cena no painel e caixas #N na foto. */
+export function selecionarTodos() {
+  if (!cenaAberta) return;
+  cenaAberta.selecionado = -1;
+  cenaAberta.modoTodos = true;
+  desenharCaixas(document.getElementById("foto-moldura"), cenaAberta, true);
+  montarSeletorTrabalhador();
+  preencherResumoCena();
+}
+
+/** Preenche o painel lateral com o resumo agregado da cena. */
+export function preencherResumoCena() {
+  if (!cenaAberta) return;
+  const itens = cenaAberta.selecionaveis ?? [];
+  const total = cenaAberta.total_registros ?? itens.length;
+  const tipos = itens.map((item) => item?.ocorrencia?.tipo_infracao ?? "");
+  const infracoes = tipos.filter((tipo) => String(tipo).includes("Sem ") ||
+    String(tipo).includes("área de risco") || String(tipo).includes("area de risco")).length;
+  const conformes = total - infracoes;
+
+  document.getElementById("data-infracao").innerText =
+    cenaAberta.timestamp ? new Date(cenaAberta.timestamp).toLocaleString("pt-BR") : "--";
+  document.getElementById("tipo-infracao").innerText =
+    `Múltiplos registros (${infracoes} infrações / ${conformes} conformes)`;
+  document.getElementById("posicaox-infracao").innerText = "Cena completa";
+  document.getElementById("posicaoy-infracao").innerText = `${total} detectados`;
+
+  // Confiança média da cena (só dentre os valores detectados).
+  const media = (valores) => {
+    const validos = valores.map(Number).filter((v) => Number.isFinite(v) && v > 0);
+    if (validos.length === 0) return null;
+    return validos.reduce((soma, v) => soma + v, 0) / validos.length;
+  };
+  const dados = itens.map((item) => item?.ocorrencia).filter(Boolean);
+  const confPessoa = media(dados.map((d) => d.conf_pessoa));
+  const confCapacete = media(dados.map((d) => d.conf_capacete));
+  const confColete = media(dados.map((d) => d.conf_colete));
+  const confTitulo = document.querySelector("#mostrar-dados-imagem .conf-titulo");
+  if (confTitulo) confTitulo.textContent = `Confiança média da cena (${total} trabalhadores)`;
+  aplicarBarraConfianca("confiancap-infracao", "barra-conf-pessoa", confPessoa);
+  aplicarBarraConfianca("confiancacp-infracao", "barra-conf-capacete", confCapacete);
+  aplicarBarraConfianca("confiancacl-infracao", "barra-conf-colete", confColete);
+
+  // No resumo da cena o descarte individual fica oculto.
+  botaoDescartarOcorrencia.dataset.ocorrenciaId = "";
+  botaoDescartarOcorrencia.hidden = true;
 }
 
 /** Troca o trabalhador em exibição sem recarregar a página. */
@@ -533,11 +667,14 @@ export function selecionarTrabalhador(indice) {
   if (!item) return;
 
   cenaAberta.selecionado = indice;
+  cenaAberta.modoTodos = false;
 
   // Redesenha para atualizar o destaque das caixas.
   desenharCaixas(document.getElementById("foto-moldura"), cenaAberta, true);
 
   montarSeletorTrabalhador();
+  const confTitulo = document.querySelector("#mostrar-dados-imagem .conf-titulo");
+  if (confTitulo) confTitulo.textContent = "Confiança das Detecções";
   preencherDetalhes(item);
 }
 

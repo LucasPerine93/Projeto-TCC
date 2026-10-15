@@ -3,18 +3,29 @@ from arduino.app_peripherals.camera import Camera
 
 from dataclasses import dataclass
 import math
+import os
+from pathlib import Path
+import sys
 import time
 
 import servidor
 import banco
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
-deteccao = VideoObjectDetection(
-    camera=camera,
-    debounce_sec=0,
-    confidence=0.5,
-    camera_preview=True,
-)
+try:
+    deteccao = VideoObjectDetection(
+        camera=camera,
+        debounce_sec=0,
+        confidence=0.5,
+        camera_preview=True,
+    )
+except TypeError:
+    # Lib antiga (pin 6735581): sem camera_preview e sem frame no callback.
+    deteccao = VideoObjectDetection(
+        camera=camera,
+        debounce_sec=0,
+        confidence=0.5,
+    )
 
 
 @dataclass
@@ -39,63 +50,40 @@ class Operario:
     track_id: int | None = None
 
 
-def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame):
+def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame=None):
 
     lista_operarios = []
 
-    pessoas_detectadas = specs_frame.get("person", [])
-    if pessoas_detectadas == []:
+    pessoas_detectadas = _get_pessoa(specs_frame)
+    if not pessoas_detectadas:
         return
 
     for dados_pessoa in pessoas_detectadas:
         novo_operario = Operario(
-            box_xyxy=dados_pessoa["bounding_box_xyxy"],
-            conf_pessoa=dados_pessoa.get("confidence"),
+            box_xyxy=_to_xyxy(dados_pessoa, ["bounding_box_xyxy"], 0.0),
+            conf_pessoa=_get_conf(dados_pessoa),
         )
         lista_operarios.append(novo_operario)
 
-    capacetes_detectados = specs_frame.get("helmet", [])
-    for dados_capacete in capacetes_detectados:
-        melhor_operario = None
-        menor_distancia = float("inf")
-        box_capacete = dados_capacete["bounding_box_xyxy"]
+    # Cada EPI é atribuído a apenas UM operário do frame (exclusividade),
+    # no operário mais próximo que o EPI intersecta.
+    box_capacete, operario_capacete = _atribuir_epi(
+        specs_frame.get("helmet", []), lista_operarios, (-0.15, 0.35), "capacete"
+    )
+    if box_capacete is not None and operario_capacete is not None:
+        operario_capacete.tem_capacete = True
+        operario_capacete.conf_capacete = _get_conf(box_capacete)
+        operario_capacete.box_capacete = list(box_capacete)
 
-        for operario in lista_operarios:
-            # Região do topo a 35% do corpo fica o capacete.
-            if verificar_epi(box_capacete, operario.box_xyxy, (-0.15, 0.35)): # (0.10) Posiciona o centro na testa do operario
-                centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(operario.box_xyxy, box_capacete, 0.10) 
-                dist = calcular_distacia(centro_capacete, centro_cabeca_operario)
-                if dist < menor_distancia:
-                    menor_distancia = dist
-                    melhor_operario = operario
+    box_colete, operario_colete = _atribuir_epi(
+        specs_frame.get("vest", []), lista_operarios, (0.36, 0.80), "colete"
+    )
+    if box_colete is not None and operario_colete is not None:
+        operario_colete.tem_colete = True
+        operario_colete.conf_colete = _get_conf(box_colete)
+        operario_colete.box_colete = list(box_colete)
 
-        if melhor_operario is not None:
-            melhor_operario.tem_capacete = True
-            melhor_operario.conf_capacete = dados_capacete.get("confidence")
-            melhor_operario.box_capacete = box_capacete
-
-    coletes_detectados = specs_frame.get("vest", [])
-    for dados_colete in coletes_detectados:
-        melhor_operario = None
-        menor_distancia = float("inf")
-        box_colete = dados_colete["bounding_box_xyxy"]
-
-        for operario in lista_operarios:
-            # Região de 36% a 80% do corpo fica o colete.
-            if verificar_epi(box_colete, operario.box_xyxy, (0.36, 0.80)):
-                centro_tronco_operario, centro_colete = calcular_centro_com_regiao(operario.box_xyxy, box_colete, 0.55)
-                
-                dist = calcular_distacia(centro_colete, centro_tronco_operario)
-                if dist < menor_distancia:
-                    menor_distancia = dist
-                    melhor_operario = operario
-
-        if melhor_operario is not None:
-            melhor_operario.tem_colete = True
-            melhor_operario.conf_colete = dados_colete.get("confidence")
-            melhor_operario.box_colete = box_colete
-
-    if area_risco_ativa == True:
+    if area_risco_ativa:
         for operario in lista_operarios:
             if verificar_area_risco(box_area_risco, operario.box_xyxy):
                 operario.risco_detectado = True
@@ -105,7 +93,91 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
     return lista_operarios
 
 
-ultimo_alerta = 0
+def _to_xyxy(dado: dict, chaves: list[str], default: float) -> list[float]:
+    """Extrai a caixa ``(x1, y1, x2, y2)`` de qualquer chave conhecida,
+    normalizando NumPy -> nativo e forçando o tipo numérico."""
+    valor = None
+    for chave in chaves:
+        if chave in dado and dado[chave] is not None:
+            valor = dado[chave]
+            break
+
+    if valor is None:
+        return [default, default, default, default]
+
+    try:
+        if hasattr(valor, "tolist"):
+            valor = valor.tolist()
+    except Exception:
+        pass
+
+    if isinstance(valor, (list, tuple)):
+        if len(valor) < 4:
+            return [default, default, default, default]
+        return [float(valor[0]), float(valor[1]), float(valor[2]), float(valor[3])]
+
+    return [default, default, default, default]
+
+
+def _get_conf(dado: dict) -> float:
+    """Encontra a chave de confiança (``confidence``) com fallback para
+    ``score``/``conf`` e garante float (ou 0.5 quando não existir)."""
+    for chave in ("confidence", "score", "conf"):
+        if chave in dado and dado[chave] is not None:
+            try:
+                return float(dado[chave])
+            except (TypeError, ValueError):
+                return 0.5
+    return 0.5
+
+
+def _get_pessoa(specs_frame: dict) -> list[dict]:
+    """Normaliza a chave da lista de pessoas (``person``/``people``/``detections``)
+    e os campos das mesmas, de forma a não quebrar a lib YOLOX de produção."""
+    pessoas = specs_frame.get("person", specs_frame.get("people", []))
+    if pessoas is None:
+        pessoas = []
+    return [p for p in pessoas if isinstance(p, dict)]
+
+
+def _atribuir_epi(epis, operarios, corpo, _tipo):
+    """Atribui **uma** caixa de EPI a **um** único operário do frame.
+
+    Regras:
+    * só considera operários com caixa ``box_xyxy`` válida;
+    * só aceita o EPI sobre a região corporal indicada (topo para capacete,
+      tronco para colete);
+    * entre os operários aceitáveis, a escolha é o menor centro-distância;
+    * o EPI é gasto ou com o operário selecionado, ou sem operário, e não
+      cai em mais de um seguido.
+
+    Retorna ``(box_epi ou None, operario ou None)``."""
+    epi_unico = None
+    operario_unico = None
+    menor_distancia = float("inf")
+
+    for dado in epis:
+        if not isinstance(dado, dict):
+            continue
+        box_epi = _to_xyxy(dado, ["bounding_box_xyxy"], 0.0)
+        if box_epi == [0.0, 0.0, 0.0, 0.0]:
+            continue
+        centro_epi = ((box_epi[0] + box_epi[2]) / 2, (box_epi[1] + box_epi[3]) / 2)
+
+        for operario in operarios:
+            box_pessoa = _to_xyxy({"bounding_box_xyxy": operario.box_xyxy}, ["bounding_box_xyxy", "box_xyxy"], 0.0)
+            if box_pessoa == [0.0, 0.0, 0.0, 0.0]:
+                continue
+            if verificar_epi(box_epi, box_pessoa, corpo):
+                centro_pessoa = calcular_centro(box_pessoa)
+                distancia = calcular_distacia(centro_epi, centro_pessoa)
+                if distancia < menor_distancia:
+                    menor_distancia = distancia
+                    epi_unico = box_epi
+                    operario_unico = operario
+
+    return epi_unico, operario_unico
+ultimo_alerta = 0.0
 TEMPO_ESPERA = 5
 
 def analisar_seguranca(lista_de_operarios):
@@ -296,17 +368,17 @@ def montar_cena(lista_de_operarios):
             "track_id": outro.track_id,
             "tipo_infracao": classificar_infracao(outro),
             "risco_detectado": bool(outro.risco_detectado),
-            "conf_pessoa": outro.conf_pessoa,
-            "conf_capacete": outro.conf_capacete,
-            "conf_colete": outro.conf_colete,
-            "pessoa": [int(v) for v in outro.box_xyxy],
-            "capacete": [int(v) for v in outro.box_capacete] if outro.box_capacete else None,
-            "colete": [int(v) for v in outro.box_colete] if outro.box_colete else None,
+            "conf_pessoa": _to_float(outro.conf_pessoa),
+            "conf_capacete": _to_float(outro.conf_capacete),
+            "conf_colete": _to_float(outro.conf_colete),
+            "pessoa": list(outro.box_xyxy),
+            "capacete": list(outro.box_capacete) if outro.box_capacete else None,
+            "colete": list(outro.box_colete) if outro.box_colete else None,
         })
     return cena
 
 
-def filtrar_salvamento(lista_de_operarios, frame):
+def filtrar_salvamento(lista_de_operarios, frame=None):
     """Avalia CADA pessoa do frame individualmente e persiste as infracoes.
 
     Diferencas em relacao ao cooldown global anterior:
@@ -338,15 +410,20 @@ def filtrar_salvamento(lista_de_operarios, frame):
     if not aprovados:
         return
 
+    # Lib antiga / stubs de teste: sem frame nao ha foto para persistir,
+    # mas o restante do fluxo (trilhas, cooldown, integracao) continua.
+    if frame is None:
+        return
+
     registros = [
         {
             "tipo_infracao": tipo,
-            "posicao_operario": operario.box_xyxy,
-            "conf_pessoa": operario.conf_pessoa,
-            "conf_capacete": operario.conf_capacete,
-            "conf_colete": operario.conf_colete,
-            "box_capacete": operario.box_capacete,
-            "box_colete": operario.box_colete,
+            "posicao_operario": list(operario.box_xyxy),
+            "conf_pessoa": _to_float(operario.conf_pessoa),
+            "conf_capacete": _to_float(operario.conf_capacete),
+            "conf_colete": _to_float(operario.conf_colete),
+            "box_capacete": list(operario.box_capacete) if operario.box_capacete else None,
+            "box_colete": list(operario.box_colete) if operario.box_colete else None,
         }
         for operario, tipo in aprovados
     ]
@@ -401,12 +478,101 @@ def calcular_centro_com_regiao(box_operario, box_epi, regiao) -> tuple:
 
 
 def operario_detectado(specs_frame, frame=None):
-    if frame == None:
-        return
+    """Callback compativel com a lib nova (dict + frame) e a antiga (so dict).
 
+    Sem frame (lib antiga 6735581): o fluxo observacional continua
+    (analise + integracao/EventLog/ponte), mas nenhuma foto e persistida.
+    """
     risco = servidor.risco
     box_risco = servidor.box_risco
-    organizar_dado(specs_frame, box_risco, risco, frame)
+    operarios = organizar_dado(specs_frame, box_risco, risco, frame)
+
+    if _processar_operarios is None:
+        return operarios
+    try:
+        # O adapter usa o veredicto risco_detectado/tem_* ja definido acima.
+        # specs_frame e preservado como payload bruto da ingestao.
+        resumo = _processar_operarios(
+            operarios,
+            specs_frame=specs_frame,
+            box_risco=box_risco,
+            area_ativa=bool(risco),
+        )
+        if not resumo.get("ok", False):
+            print("[VISION] integracao observacional concluiu com erro registrado")
+    except Exception as exc:  # defesa extra: callback da camera nunca cai
+        print(f"[VISION] integracao observacional falhou no callback: {exc!r}")
+    return operarios
 
 
-deteccao.on_detect_all(operario_detectado)
+def _operario_detectado_legado(specs_frame):
+    """Wrapper de 1 argumento para a lib antiga (on_detect_all exige 1 arg)."""
+    return operario_detectado(specs_frame, None)
+
+
+# ---------------------------------------------------------------------------
+# Integracao observacional: carregamento portavel e degradacao explicita.
+# Nao importa a State Machine de montagem e nao refaz geometria do detector.
+# ---------------------------------------------------------------------------
+def _raiz_mvp():
+    raiz_env = os.environ.get("TCC_MVP_ROOT")
+    if raiz_env:
+        candidato = Path(raiz_env)
+        if (candidato / "vision_integration" / "integracao_lucas.py").is_file():
+            return candidato
+
+    atual = Path(__file__).resolve().parent
+    for _ in range(6):
+        candidato = atual / "procedimento-mvp"
+        if (candidato / "vision_integration" / "integracao_lucas.py").is_file():
+            return candidato
+        if (atual / "vision_integration" / "integracao_lucas.py").is_file():
+            return atual
+        atual = atual.parent
+    return None
+
+
+_processar_operarios = None
+_erro_integracao = None
+
+
+def _inicializar_integracao():
+    """Configura o hook uma vez; erro nao interrompe a visao nem fica oculto."""
+    global _processar_operarios, _erro_integracao
+    raiz = _raiz_mvp()
+    if raiz is None:
+        _erro_integracao = "procedimento-mvp/vision_integration nao encontrado"
+        print(f"[VISION] integracao observacional indisponivel: {_erro_integracao}")
+        return
+
+    for pasta in (raiz, raiz / "event_arch"):
+        texto = str(pasta)
+        if texto not in sys.path:
+            sys.path.insert(0, texto)
+    try:
+        from vision_integration import integracao_lucas
+        from vision_integration.detector_bridge import DetectorIngestBridge
+        from vision_integration.occurrence import OccurrenceTracker
+        from event_debounce import EventDebounce
+        from event_log import EventLog
+
+        integracao_lucas.configurar(
+            log=EventLog(raiz / "data" / "procedure_events.jsonl"),
+            debounce=EventDebounce(),
+            ponte=DetectorIngestBridge(),
+            occurrence=OccurrenceTracker(),
+        )
+        _processar_operarios = integracao_lucas.processar_operarios
+        print("[VISION] integracao observacional configurada -> Operario -> adapter")
+    except Exception as exc:  # detector continua funcionando sem o MVP
+        _erro_integracao = repr(exc)
+        print(f"[VISION] integracao observacional indisponivel: {_erro_integracao}")
+
+
+_inicializar_integracao()
+
+try:
+    deteccao.on_detect_all(operario_detectado)
+except (TypeError, ValueError):
+    # Lib antiga valida len(args) != 1 no registro: usa o wrapper legado.
+    deteccao.on_detect_all(_operario_detectado_legado)

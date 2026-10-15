@@ -1351,6 +1351,42 @@ h1 .ic {
   display: block;
 }
 
+/* Botão de controle de marcações na moldura da foto do modal. */
+.foto-controles {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: #e0f2fe;
+  background: rgba(2, 6, 23, 0.78);
+  border: 1px solid rgba(56, 189, 248, 0.5);
+  border-radius: 8px;
+  padding: 5px 10px;
+  cursor: pointer;
+  z-index: 5;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.foto-controles:hover {
+  background: rgba(14, 116, 144, 0.5);
+  border-color: #38bdf8;
+}
+
+.foto-controles .ic {
+  width: 15px;
+  height: 15px;
+}
+
+/* Foto com marcações ocultas: mostra a evidência 100% limpa. */
+#foto-moldura.marcacoes-ocultas .caixa-deteccao {
+  display: none;
+}
+
 /* Container de Informações da Imagem (bloco direito do modal) */
 #mostrar-dados-imagem .detalhes-conteudo {
   grid-column: 2;
@@ -1706,6 +1742,35 @@ h1 .ic {
   background: #38bdf8;
   border-color: #38bdf8;
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.18);
+}
+
+/* Pílulas numeradas compactas (#1, #2...) com ponto de situação por cor. */
+.seletor-botao.trabalhador-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+}
+
+.seletor-botao.seletor-todos {
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+  background-color: #64748b;
+}
+
+/* Rótulo auxiliar do modo do seletor (ex.: "Panorama da cena" / "Trabalhador 3 de 8"). */
+.trabalhador-modo {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #7fa3c9;
+  letter-spacing: 0.02em;
 }
 
 /* Destaque do trabalhador selecionado e recuo dos demais da mesma cena. */

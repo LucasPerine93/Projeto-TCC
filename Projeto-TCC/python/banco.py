@@ -77,14 +77,38 @@ def inicializar_banco(caminho_banco: str) -> bool:
         if conexao:
             conexao.close()
 
+def _to_lista(valor, inteiro: bool = False):
+    """Converte caixas/numéricos em ``list[float]`` (ou ``list[int]``) nativos,
+    descartando NumPy e garantindo que o JSON foge do TypeError."""
+    if valor is None:
+        return None
+    try:
+        if hasattr(valor, "tolist"):
+            valor = valor.tolist()
+    except Exception:
+        pass
+    if isinstance(valor, (list, tuple)):
+        return [int(v) if inteiro else float(v) for v in valor]
+    try:
+        return int(valor) if inteiro else float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
 def _montar_caixas(posicao_operario, box_capacete, box_colete, cena=None, cena_id=None):
-    """Caixas do trabalhador + lista completa da cena, num unico JSON."""
+    """Caixas do trabalhador + lista completa da cena, num unico JSON.
+
+    Exclusividade: quando não há cena registrada, ``operarios`` sai vazio em
+    vez de servi-lo como repositório mutável — a lista só veIOS carregar no
+    front-end conforme o cliente registra quais operários ficaram em risco na
+   quele frame e a adere a essa copia.
+    """
     caixas = {
-        "pessoa": [int(v) for v in posicao_operario],
-        "capacete": [int(v) for v in box_capacete] if box_capacete else None,
-        "colete": [int(v) for v in box_colete] if box_colete else None,
+        "pessoa": _to_lista(posicao_operario, inteiro=True),
+        "capacete": _to_lista(box_capacete, inteiro=True),
+        "colete": _to_lista(box_colete, inteiro=True),
         "cena_id": cena_id,
-        "operarios": cena or [],
+        "operarios": list(cena) if cena else [],
     }
     return json.dumps(caixas)
 
@@ -135,12 +159,12 @@ def salvar_cena(frame, registros, cena=None):
 
         for registro in registros:
             posicao = registro["posicao_operario"]
-            px = (posicao[0] + posicao[2]) / 2
-            py = (posicao[1] + posicao[3]) / 2
+            px = (_to_float(posicao[0]) + _to_float(posicao[2])) / 2
+            py = (_to_float(posicao[1]) + _to_float(posicao[3])) / 2
             caixas_json = _montar_caixas(
-                posicao,
-                registro.get("box_capacete"),
-                registro.get("box_colete"),
+                [float(v) for v in posicao],
+                _to_float(registro.get("box_capacete")),
+                _to_float(registro.get("box_colete")),
                 cena,
                 cena_id,
             )
@@ -151,9 +175,9 @@ def salvar_cena(frame, registros, cena=None):
                     registro["tipo_infracao"],
                     px,
                     py,
-                    registro.get("conf_pessoa"),
-                    registro.get("conf_capacete"),
-                    registro.get("conf_colete"),
+                    _to_float(registro.get("conf_pessoa")),
+                    _to_float(registro.get("conf_capacete")),
+                    _to_float(registro.get("conf_colete")),
                     caminho_salvar,
                     caixas_json,
                 ),
