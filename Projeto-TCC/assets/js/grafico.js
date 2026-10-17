@@ -45,7 +45,7 @@ export function desenharLinha(svg, pontos, { meta = null } = {}) {
     if (seg.length > 1) {
       svg.append(no("polyline", {
         points: seg.map((q) => q.join(",")).join(" "), fill: "none", stroke: "var(--marca)",
-        "stroke-width": 3, "stroke-linejoin": "round",
+        "stroke-width": 3, "stroke-linejoin": "round", pathLength: 1, class: "linha-anim",
       }));
     }
   });
@@ -68,4 +68,38 @@ export function desenharLinha(svg, pontos, { meta = null } = {}) {
   svg.setAttribute("aria-label", comDados
     ? `Conformidade diária: de ${Math.min(...valores).toString().replace(".", ",")}% a ${Math.max(...valores).toString().replace(".", ",")}%, em ${comDados} dia(s) com dados`
     : "Conformidade diária: sem dados no período");
+}
+
+/** Rosca em SVG puro. itens: [{ rotulo, valor, cor }]. A animação de preenchimento é
+ *  feita por transição CSS de stroke-dasharray (acionada depois do primeiro quadro). */
+export function desenharRosca(svg, itens, { centro = "", legendaCentro = "" } = {}) {
+  svg.replaceChildren();
+  svg.setAttribute("viewBox", "0 0 42 42");
+  const total = itens.reduce((s, i) => s + i.valor, 0);
+  svg.append(no("circle", { cx: 21, cy: 21, r: 15.915, fill: "none", stroke: "var(--superficie-2)", "stroke-width": 6 }));
+  if (total > 0) {
+    let acumulado = 0;
+    const folga = itens.filter((i) => i.valor > 0).length > 1 ? 0.8 : 0;
+    const arcos = [];
+    itens.forEach((item) => {
+      if (item.valor <= 0) return;
+      const pct = (item.valor / total) * 100;
+      const arco = no("circle", {
+        cx: 21, cy: 21, r: 15.915, fill: "none", stroke: item.cor, "stroke-width": 6,
+        "stroke-dasharray": "0 100", "stroke-dashoffset": 25 - acumulado, class: "rosca-arco",
+      });
+      arco.append(no("title", {}, `${item.rotulo}: ${item.valor} (${pct.toFixed(0)}%)`));
+      svg.append(arco);
+      arcos.push([arco, Math.max(0, pct - folga)]);
+      acumulado += pct;
+    });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      arcos.forEach(([arco, len]) => arco.setAttribute("stroke-dasharray", `${len} ${100 - len}`));
+    }));
+  }
+  svg.append(no("text", { x: 21, y: 21.5, "text-anchor": "middle", class: "rosca-numero" }, String(centro)));
+  svg.append(no("text", { x: 21, y: 26.5, "text-anchor": "middle", class: "rosca-legenda" }, legendaCentro));
+  svg.setAttribute("aria-label", total > 0
+    ? `Distribuição das infrações: ${itens.filter((i) => i.valor > 0).map((i) => `${i.rotulo} ${i.valor}`).join(", ")}`
+    : "Sem infrações no período");
 }

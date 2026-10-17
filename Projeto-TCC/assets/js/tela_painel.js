@@ -2,7 +2,7 @@
 import { apiJson } from "./api.js";
 import { el, icone, infoTipo, ordemGravidade, formatarPercentual, plural } from "./util.js";
 import { registrarTela, irPara } from "./nucleo.js";
-import { desenharLinha } from "./grafico.js";
+import { desenharLinha, desenharRosca } from "./grafico.js";
 import { cenasPendentes, criarItemCena, abrirDetalhe, carregarOcorrencias, jaCarregou, filtrarPorStatus } from "./tela_ocorrencias.js";
 
 const META = 95;
@@ -28,6 +28,24 @@ export async function carregarPainel() {
   desenhar();
 }
 
+let valorAnterior = null;
+const reduzMovimento = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const fmt = (v) => v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+
+/** Número grande com contagem animada (do valor anterior até o novo). */
+function contar(alvo, valor) {
+  const escrever = (v) => alvo.replaceChildren(v === null ? "—" : fmt(v), v === null ? "" : el("small", {}, "%"));
+  if (valor === null || reduzMovimento()) { escrever(valor); valorAnterior = valor; return; }
+  const de = valorAnterior ?? 0, ate = valor, inicio = performance.now(), dur = 900;
+  valorAnterior = valor;
+  const passo = (t) => {
+    const k = Math.min(1, (t - inicio) / dur), suave = 1 - Math.pow(1 - k, 3);
+    escrever(de + (ate - de) * suave);
+    if (k < 1) requestAnimationFrame(passo); else escrever(ate);
+  };
+  requestAnimationFrame(passo);
+}
+
 function dataCurta(iso) { const [, m, d] = iso.split("-"); return `${d}/${m}`; }
 
 function serieCompleta() {
@@ -50,7 +68,7 @@ function desenhar() {
   const pessoas = numero(dados?.pessoas_observadas) ?? 0;
   const sit = situacao(conf);
 
-  $("conf-valor").replaceChildren(conf === null ? "—" : String(conf.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })), conf === null ? "" : el("small", {}, "%"));
+  contar($("conf-valor"), conf);
   const s = $("conf-situacao");
   s.className = `situacao s-${sit}`;
   s.replaceChildren(icone(ICONE_SIT[sit]), conf === null ? TEXTO_SIT.neutro : `${TEXTO_SIT[sit]} · meta ${META}%`);
@@ -87,16 +105,19 @@ function desenhar() {
   $("grafico-vazio").textContent = dias === 1 ? "Para ver a evolução, escolha 7 ou 30 dias." : "Sem dados de conformidade no período.";
   if (mostra) desenharLinha($("grafico"), pontos, { meta: META });
 
-  // Tipos
+  // Tipos: rosca = composição das infrações (não é a taxa de conformidade)
   const tipos = Object.entries(dados?.infracoes_por_tipo ?? dados?.resumo_conformidade ?? {})
     .filter(([t]) => infoTipo(t).gravidade !== "ok")
     .sort((a, b) => b[1] - a[1]);
-  const maior = Math.max(1, ...tipos.map(([, n]) => n));
-  $("lista-tipos").replaceChildren(...(tipos.length ? tipos.map(([tipo, n]) => {
-    const info = infoTipo(tipo);
-    return el("div", { class: "tipo" }, el("span", {}, info.rotulo), el("output", {}, String(n)),
-      el("div", { class: "barra" }, el("i", { class: info.gravidade === "neutro" ? "" : info.gravidade, style: `width:${(n / maior) * 100}%` })));
-  }) : [el("p", { class: "vazio" }, "Nenhuma ocorrência no período.")]));
+  const totalTipos = tipos.reduce((s, [, n]) => s + n, 0);
+  const itens = tipos.map(([t, n], i) => ({ rotulo: infoTipo(t).rotulo, valor: n, cor: `var(--c${(i % 4) + 1})` }));
+  desenharRosca($("rosca"), itens, { centro: totalTipos, legendaCentro: totalTipos === 1 ? "infração" : "infrações" });
+  $("lista-tipos").replaceChildren(...(tipos.length ? itens.map((it) => el("li", {},
+    el("i", { class: "marcador", style: `background:${it.cor}` }),
+    el("span", { class: "leg-nome" }, it.rotulo),
+    el("b", {}, String(it.valor)),
+    el("span", { class: "leg-pct" }, `${Math.round((it.valor / totalTipos) * 100)}%`)))
+    : [el("li", { class: "vazio" }, "Nenhuma ocorrência no período.")]));
 
   desenharFila();
 }

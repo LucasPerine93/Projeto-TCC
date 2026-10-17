@@ -54,7 +54,9 @@ export async function carregarOcorrencias() {
 function atualizarSelo() {
   const n = ocorrencias.filter((o) => statusDe(o) === "pendente").length;
   selo.hidden = n === 0;
+  const mudou = selo.textContent !== (n > 99 ? "99+" : String(n));
   selo.textContent = n > 99 ? "99+" : String(n);
+  if (mudou && n > 0 && carregado) { selo.classList.remove("pulsa"); void selo.offsetWidth; selo.classList.add("pulsa"); }
   selo.setAttribute("aria-label", `${n} pendentes de revisão`);
 }
 
@@ -412,5 +414,10 @@ export function pararOcorrencias() {
   if (dlg.open) dlg.close();
 }
 
-registrarTela("ocorrencias", { entrar: () => { desenharLista(); if (carregado) carregarOcorrencias(); } });
+function animarEntrada() {
+  lista.classList.add("anima");
+  window.setTimeout(() => lista.classList.remove("anima"), 900);
+}
+
+registrarTela("ocorrencias", { entrar: () => { animarEntrada(); desenharLista(); if (carregado) carregarOcorrencias(); } });
 export { abrirDetalhe };
