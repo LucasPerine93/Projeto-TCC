@@ -1,4 +1,4 @@
-﻿/* ==========================================================================
+/* ==========================================================================
    PAINEL DE EPIs â€” folha de estilos
    PrincÃ­pios: superfÃ­cies sÃ³lidas, alto contraste, cor sÃ³ para estado (sempre
    acompanhada de Ã­cone e texto), alvos de toque >= 40px, sem fonte da web.
@@ -272,8 +272,20 @@ main:focus { outline: none; }
 
 /* ===== 8. DIÃLOGO DE DETALHES E CAIXAS DE DETECÃ‡ÃƒO ===== */
 dialog {
-  width: min(1040px, calc(100vw - 24px)); max-height: calc(100vh - 24px); padding: 0; overflow: auto;
-  background: var(--superficie); color: var(--texto); border: 1px solid var(--borda); border-radius: var(--raio); box-shadow: var(--sombra-flutuante);
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  width: min(1040px, calc(100vw - 24px)); 
+  max-height: calc(100vh - 24px); 
+  padding: 0; 
+  overflow: auto;
+  background: var(--superficie); 
+  color: var(--texto); 
+  border: 1px solid var(--borda); 
+  border-radius: var(--raio); 
+  box-shadow: var(--sombra-flutuante);
 }
 dialog::backdrop { background: rgba(8, 12, 20, 0.6); }
 .dlg-cab { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--borda); position: sticky; top: 0; background: var(--superficie); z-index: 3; }
@@ -401,7 +413,7 @@ dialog::backdrop { background: rgba(8, 12, 20, 0.6); }
 @keyframes tracar { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 @keyframes aparecer { from { opacity: 0; } to { opacity: 1; } }
 @keyframes deslizar { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
-@keyframes abrirDialogo { from { opacity: 0; transform: translateY(16px) scale(0.98); } to { opacity: 1; transform: none; } }
+@keyframes abrirDialogo { from { opacity: 0; transform: translate(-50%, calc(-50% + 16px)) scale(0.98); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 @keyframes pulso { 0% { box-shadow: 0 0 0 0 var(--critico); } 100% { box-shadow: 0 0 0 10px transparent; } }
 
 /* troca de tela */
