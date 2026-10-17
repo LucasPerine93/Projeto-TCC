@@ -1,296 +1,305 @@
 <!doctype html>
-<html lang="pt-br">
+<html lang="pt-br" data-tema="claro">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Painel UNO Q - Detecção de EPIs</title>
+    <meta name="color-scheme" content="light dark" />
+    <title>Painel de EPIs</title>
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
     <!-- Ícones: ficam em icones.svg e são usados via
          <svg class="ic"><use href="icones.svg#nome" /></svg> -->
 
-    <!-- ================= TELA DE BLOQUEIO ================= -->
-    <section id="tela-bloqueio" style="display: block">
-      <svg class="ic icone-bloqueio" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
-      <h1>Detecção de EPIs</h1>
-      <h2>Acesso Restrito ao Painel</h2>
-      <p class="instrucao-bloqueio">
-        Digite sua senha para desbloquear o sistema de monitoramento:
-      </p>
-      <input type="text" id="caixa-senha" placeholder="Digite sua senha ..." />
-      <button id="enviar-senha" class="botao botao-primario">Enviar</button>
-      <span id="mensagem-erro"></span>
+    <a class="pular-conteudo" href="#conteudo">Pular para o conteúdo</a>
+
+    <!-- ================= ACESSO ================= -->
+    <section id="tela-bloqueio" aria-labelledby="titulo-bloqueio">
+      <form id="form-login" class="cartao bloqueio-cartao" novalidate>
+        <svg class="ic bloqueio-icone" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
+        <h1 id="titulo-bloqueio">Painel de EPIs</h1>
+        <p class="sub">Acesso restrito. Entre para acompanhar a conformidade e revisar ocorrências.</p>
+
+        <label for="campo-senha">Senha</label>
+        <input id="campo-senha" type="password" autocomplete="current-password" required
+               aria-describedby="erro-login" />
+        <p id="erro-login" class="erro-campo" role="alert" aria-live="assertive"></p>
+
+        <button id="botao-entrar" class="btn btn-primario btn-largo" type="submit">Entrar</button>
+      </form>
     </section>
 
-    <!-- ================= CÂMERA AO VIVO ================= -->
-    <section id="video-camera" style="display: none">
-      <h1>
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
-        Sistema de Detecção de EPIs
-      </h1>
-      <p class="subtitulo">Transmissão e Monitoramento em Tempo Real</p>
-
-      <div class="video-container">
-        <iframe id="video"></iframe>
-        <!-- Placeholder elegante exibido enquanto a câmera não transmite. -->
-        <div class="camera-placeholder" id="camera-placeholder">
-          <svg class="ic camera-placeholder-icone" aria-hidden="true"><use href="icones.svg#camera" /></svg>
-          <p>Aguardando transmissão da câmera...</p>
-        </div>
-        <canvas id="area-risco" width="720" height="460"></canvas>
-      </div>
-
-      <aside id="logs">
-        <div class="logs-cabecalho">
-          <h2>
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#clipboard" /></svg>
-            Logs do Sistema
-          </h2>
-          <div class="logs-acoes">
-            <button id="toggle-alerta-sonoro" class="botao botao-secundario botao-pequeno" type="button" aria-pressed="false">
-              <svg class="ic" aria-hidden="true"><use href="icones.svg#alerta" /></svg>
-              <span id="texto-alerta-sonoro">Alerta sonoro: Desativado</span>
-            </button>
-            <button id="limpar-logs" class="botao botao-secundario botao-pequeno">
-              <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
-              Limpar logs
-            </button>
-          </div>
-        </div>
-        <div id="mostrar-logs"></div>
-      </aside>
-
-      <p class="instrucao-canvas">
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#mouse" /></svg>
-        Clique e arraste o mouse sobre o vídeo para demarcar a área de risco
-      </p>
-
-      <button id="limpar-box" class="botao botao-alerta">
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
-        Limpar
-      </button>
-      <button id="bloquear" class="botao botao-perigo">
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#cadeado" /></svg>
-        Bloquear
-      </button>
-      <button id="botao-dashboard" class="botao botao-info">
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
-        Dashboard
-      </button>
-    </section>
-
-    <!-- ================= GALERIA DE INFRAÇÕES ================= -->
-    <section id="capturas-infracoes" style="display: none">
-      <h1>
-        <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
-        Galeria de Infrações de EPIs
-      </h1>
-      <p class="subtitulo">Registro Fotográfico das Ocorrências Capturadas</p>
-
-      <div class="cartao galeria">
-        <h2>
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
-          Infrações Capturadas:
-        </h2>
-        <div class="galeria-filtros" aria-label="Filtrar ocorrências por tipo de infração">
-          <button class="filtro-galeria ativo" type="button" data-filtro="Todas">Todas <span data-contador-filtro="Todas">0</span></button>
-          <button class="filtro-galeria" type="button" data-filtro="Sem capacete">Sem capacete <span data-contador-filtro="Sem capacete">0</span></button>
-          <button class="filtro-galeria" type="button" data-filtro="Sem colete">Sem colete <span data-contador-filtro="Sem colete">0</span></button>
-          <button class="filtro-galeria" type="button" data-filtro="Sem capacete e colete">Sem capacete e colete <span data-contador-filtro="Sem capacete e colete">0</span></button>
-        </div>
-        <button id="botao-atualizar" class="botao botao-primario">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
-          Atualizar Fotos
-        </button>
-        <button id="voltar-camera" class="botao botao-primario">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#voltar" /></svg>
-          Voltar
-        </button>
-        <div id="galeria-fotos"></div>
-      </div>
-    </section>
-
-    <!-- ================= PAINEL ANALÍTICO ================= -->
-    <section id="dashboard" style="display: none">
-      <!-- Cabeçalho com título à esquerda e ações à direita (mesmo padrão
-           visual do topo da galeria). -->
-      <div class="dashboard-topo">
-        <div class="dashboard-titulo">
-          <h1>
+    <!-- ================= APLICAÇÃO ================= -->
+    <div id="app" hidden>
+      <header class="topo">
+        <div class="topo-faixa">
+          <div class="marca">
             <svg class="ic" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
-            Painel Analítico de Conformidade
-          </h1>
-          <p class="subtitulo">Indicadores e Histórico de Ocorrências Registradas</p>
-        </div>
-        <div class="painel-acoes">
-          <button id="botao-atualizar-painel" class="botao botao-primario">
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
-            Atualizar
-          </button>
-          <button id="botao-exportar-csv" class="botao botao-secundario">
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#download" /></svg>
-            Exportar CSV
-          </button>
-          <button id="ver-galeria" class="botao botao-primario">
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#imagem" /></svg>
-            Ver Fotos
-          </button>
-          <button id="voltar-painel" class="botao botao-primario">
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#voltar" /></svg>
-            Voltar
-          </button>
-        </div>
-      </div>
-      <p id="aviso-exportacao-csv" class="aviso-discreto" role="status" hidden></p>
-
-      <div class="painel-conteudo">
-        <div class="painel-cards">
-          <article class="cartao kpi-card">
-            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#clipboard" /></svg>
-            <span class="kpi-valor" id="kpi-total">0</span>
-            <span class="kpi-rotulo">Total de Observações</span>
-          </article>
-          <article class="cartao kpi-card">
-            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#alerta" /></svg>
-            <span class="kpi-valor" id="kpi-tipos">0</span>
-            <span class="kpi-rotulo">Tipos de Infração</span>
-          </article>
-          <article class="cartao kpi-card">
-            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#tendencia" /></svg>
-            <span class="kpi-valor kpi-valor-texto" id="kpi-comum">--</span>
-            <span class="kpi-rotulo">Infração Mais Comum</span>
-          </article>
-          <article class="cartao kpi-card">
-            <svg class="ic kpi-icone" aria-hidden="true"><use href="icones.svg#relogio" /></svg>
-            <span class="kpi-valor kpi-valor-texto" id="kpi-ultima">--</span>
-            <span class="kpi-rotulo">Última Ocorrência</span>
-          </article>
-        </div>
-
-        <div class="cartao painel-grafico">
-          <h2>
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
-            Distribuição das Infrações
-          </h2>
-          <p class="estado-vazio" id="grafico-vazio" hidden>Nenhum evento registrado no momento</p>
-          <canvas id="grafico-conformidade"></canvas>
-        </div>
-
-        <div class="cartao painel-tabela">
-          <h2>
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#tabela" /></svg>
-            Eventos Recentes
-          </h2>
-          <table id="tabela-eventos">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Infração</th>
-                <th>Pos. X</th>
-                <th>Pos. Y</th>
-                <th>Conf. Pessoa</th>
-              </tr>
-            </thead>
-            <tbody id="tabela-eventos-corpo"></tbody>
-          </table>
-        </div>
-      </div>
-    </section>
-
-    <!-- ================= MODAL DE DETALHES DA FOTO ================= -->
-    <div id="mostrar-dados-imagem" style="display: none">
-      <!-- Cabeçalho flex: título à esquerda, ações (Descartar/Fechar) à direita. -->
-      <div class="modal-cabecalho">
-        <h2>
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#grafico" /></svg>
-          Detalhes da Ocorrência
-        </h2>
-        <div class="modal-acoes">
-          <button id="descartar-ocorrencia" class="botao botao-perigo botao-pequeno" type="button" hidden>
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#limpar" /></svg>
-            <span id="texto-descartar-ocorrencia">Descartar ocorrência</span>
-          </button>
-          <button id="fechar-dados-imagem" class="botao botao-perigo botao-pequeno">
-            <svg class="ic" aria-hidden="true"><use href="icones.svg#fechar" /></svg>
-            Fechar
-          </button>
-        </div>
-      </div>
-
-      <!-- Moldura da foto: ancora as caixas de detecção sobre a imagem. -->
-      <div id="foto-moldura">
-        <img id="foto-ampliada" alt="Imagem ampliada" />
-        <button id="btn-marcar-caixas" class="foto-controles" type="button" title="Ocultar ou mostrar as marcações de detecção na foto">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
-          <span id="texto-marcar-caixas">Ocultar marcações</span>
-        </button>
-      </div>
-
-      <!-- Seletor de trabalhador: só aparece quando a cena tem mais de um registrado. -->
-      <div id="seletor-trabalhador" class="seletor-trabalhador" hidden>
-        <span class="seletor-titulo">
-          <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
-          Trabalhadores
-        </span>
-        <div class="seletor-botoes" id="seletor-trabalhador-botoes"></div>
-        <span id="trabalhador-modo" class="trabalhador-modo" role="status"></span>
-      </div>
-
-      <div class="detalhes-conteudo">
-        <div class="detalhe-linha">
-          <span class="detalhe-rotulo">Data / Hora</span>
-          <span class="detalhe-valor" id="data-infracao">--</span>
-        </div>
-
-        <div class="detalhe-linha">
-          <span class="detalhe-rotulo">Infração</span>
-          <span class="detalhe-valor" id="tipo-infracao">--</span>
-        </div>
-
-        <div class="detalhe-coords">
-          <div class="coord-celula">
-            <span class="detalhe-rotulo">Posição X</span>
-            <span class="detalhe-valor" id="posicaox-infracao">--</span>
+            <span>Painel de EPIs</span>
           </div>
-          <div class="coord-celula">
-            <span class="detalhe-rotulo">Posição Y</span>
-            <span class="detalhe-valor" id="posicaoy-infracao">--</span>
+
+          <nav id="abas" aria-label="Seções">
+            <button type="button" data-tela="ao-vivo">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
+              <span>Ao vivo</span>
+            </button>
+            <button type="button" data-tela="ocorrencias">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#lista" /></svg>
+              <span>Ocorrências</span>
+              <span id="selo-pendentes" class="selo" hidden></span>
+            </button>
+            <button type="button" data-tela="painel">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#painel" /></svg>
+              <span>Painel</span>
+            </button>
+          </nav>
+
+          <div class="estado" role="status" aria-label="Estado do sistema">
+            <span class="chip" id="chip-conexao" data-estado="neutro"><b aria-hidden="true"></b><span>Conectando…</span></span>
+            <span class="chip" id="chip-camera" data-estado="neutro"><b aria-hidden="true"></b><span>Câmera…</span></span>
+            <span class="chip" id="chip-area" data-estado="neutro"><b aria-hidden="true"></b><span>Sem área de risco</span></span>
+          </div>
+
+          <div class="topo-acoes">
+            <button id="botao-tema" class="btn btn-icone" type="button" aria-label="Usar tema escuro" aria-pressed="false">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#lua" /></svg>
+            </button>
+            <button id="botao-sair" class="btn" type="button">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#sair" /></svg>
+              <span>Sair</span>
+            </button>
           </div>
         </div>
+      </header>
 
-        <div class="conf-secao">
-          <span class="conf-titulo">Confiança das Detecções</span>
-
-          <div class="conf-item">
-            <span class="conf-nome">Pessoa</span>
-            <span class="conf-valor" id="confiancap-infracao">--</span>
-            <div class="conf-trilha">
-              <div class="conf-preenchimento" id="barra-conf-pessoa"></div>
+      <main id="conteudo" tabindex="-1">
+        <!-- ============ AO VIVO ============ -->
+        <section class="tela" data-tela="ao-vivo" aria-labelledby="t-ao-vivo" hidden>
+          <div class="cab">
+            <div>
+              <h1 id="t-ao-vivo">Monitoramento ao vivo</h1>
+              <p class="sub">Transmissão da câmera e eventos do sistema em tempo real.</p>
             </div>
           </div>
 
-          <div class="conf-item">
-            <span class="conf-nome">Capacete</span>
-            <span class="conf-valor" id="confiancacp-infracao">--</span>
-            <div class="conf-trilha">
-              <div class="conf-preenchimento" id="barra-conf-capacete"></div>
+          <div class="vivo-grade">
+            <div class="vivo-video">
+              <div class="quadro-video" id="quadro-video">
+                <iframe id="video" title="Transmissão da câmera"></iframe>
+                <div class="camera-vazia" id="camera-placeholder">
+                  <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
+                  <p id="camera-msg">Aguardando transmissão da câmera…</p>
+                </div>
+                <canvas id="area-risco" width="720" height="480" aria-label="Área de risco desenhada sobre o vídeo"></canvas>
+              </div>
+
+              <div class="barra-ferramentas">
+                <button id="botao-definir-area" class="btn" type="button" aria-pressed="false">
+                  <svg class="ic" aria-hidden="true"><use href="icones.svg#mira" /></svg>
+                  <span>Definir área de risco</span>
+                </button>
+                <button id="botao-remover-area" class="btn" type="button" disabled>
+                  <svg class="ic" aria-hidden="true"><use href="icones.svg#x" /></svg>
+                  <span>Remover área</span>
+                </button>
+                <p id="dica-area" class="sub" role="status">
+                  Para marcar onde ninguém deve entrar, toque em “Definir área de risco” e arraste sobre o vídeo.
+                </p>
+              </div>
+            </div>
+
+            <aside class="cartao logs" aria-labelledby="t-logs">
+              <div class="logs-cab">
+                <h2 id="t-logs">Eventos do sistema</h2>
+                <div class="logs-acoes">
+                  <button id="botao-som" class="btn btn-pequeno" type="button" aria-pressed="false">
+                    <svg class="ic" aria-hidden="true"><use href="icones.svg#mudo" /></svg>
+                    <span>Alerta sonoro: desligado</span>
+                  </button>
+                  <button id="botao-limpar-logs" class="btn btn-pequeno" type="button">Limpar</button>
+                </div>
+              </div>
+              <ol id="lista-logs" class="lista-logs" aria-live="polite" aria-relevant="additions"></ol>
+              <p id="logs-vazio" class="vazio">Nenhum evento ainda. As detecções aparecem aqui assim que acontecerem.</p>
+            </aside>
+          </div>
+        </section>
+
+        <!-- ============ OCORRÊNCIAS ============ -->
+        <section class="tela" data-tela="ocorrencias" aria-labelledby="t-ocorrencias" hidden>
+          <div class="cab">
+            <div>
+              <h1 id="t-ocorrencias">Ocorrências</h1>
+              <p class="sub" id="resumo-ocorrencias">Carregando…</p>
+            </div>
+            <div class="cab-acoes">
+              <button id="botao-atualizar" class="btn" type="button">
+                <svg class="ic" aria-hidden="true"><use href="icones.svg#atualizar" /></svg>
+                <span>Atualizar</span>
+              </button>
+              <button id="botao-exportar" class="btn" type="button">
+                <svg class="ic" aria-hidden="true"><use href="icones.svg#download" /></svg>
+                <span>Exportar CSV</span>
+              </button>
             </div>
           </div>
 
-          <div class="conf-item">
-            <span class="conf-nome">Colete</span>
-            <span class="conf-valor" id="confiancacl-infracao">--</span>
-            <div class="conf-trilha">
-              <div class="conf-preenchimento" id="barra-conf-colete"></div>
+          <div class="filtros">
+            <div class="seg" role="group" aria-label="Situação da revisão" id="filtro-status">
+              <button type="button" data-valor="pendente" aria-pressed="true">Pendentes <span class="contador"></span></button>
+              <button type="button" data-valor="confirmada" aria-pressed="false">Confirmadas <span class="contador"></span></button>
+              <button type="button" data-valor="descartada" aria-pressed="false">Falsos positivos <span class="contador"></span></button>
+              <button type="button" data-valor="todas" aria-pressed="false">Todas <span class="contador"></span></button>
+            </div>
+            <label class="campo-inline">
+              <span>Período</span>
+              <select id="filtro-periodo">
+                <option value="todos">Todo o histórico</option>
+                <option value="1">Hoje</option>
+                <option value="7">Últimos 7 dias</option>
+                <option value="30">Últimos 30 dias</option>
+              </select>
+            </label>
+          </div>
+          <div class="chips-filtro" role="group" aria-label="Tipo de infração" id="filtro-tipo"></div>
+
+          <p id="aviso-exportar" class="sub" role="status" hidden></p>
+          <div id="lista-ocorrencias" class="lista-ocorrencias"></div>
+          <div class="mais"><button id="botao-mais" class="btn" type="button" hidden>Mostrar mais</button></div>
+        </section>
+
+        <!-- ============ PAINEL ============ -->
+        <section class="tela" data-tela="painel" aria-labelledby="t-painel" hidden>
+          <div class="cab">
+            <div>
+              <h1 id="t-painel">Conformidade de EPIs</h1>
+              <p class="sub" id="painel-atualizado">Carregando…</p>
+            </div>
+            <div class="seg" role="group" aria-label="Período" id="painel-periodo">
+              <button type="button" data-dias="1" aria-pressed="false">Hoje</button>
+              <button type="button" data-dias="7" aria-pressed="true">7 dias</button>
+              <button type="button" data-dias="30" aria-pressed="false">30 dias</button>
             </div>
           </div>
-        </div>
-      </div>
+
+          <div class="grade">
+            <section class="cartao heroi" aria-labelledby="h-conf">
+              <h2 id="h-conf">Conformidade geral</h2>
+              <div class="grande" id="conf-valor">—</div>
+              <div class="situacao s-neutro" id="conf-situacao"></div>
+              <p class="sub" id="conf-tendencia"></p>
+              <p class="base" id="conf-base"></p>
+            </section>
+
+            <section class="cartao taxas" aria-labelledby="h-taxas">
+              <h2 id="h-taxas">Onde está a falha</h2>
+              <div id="lista-taxas"></div>
+              <p class="legenda" id="legenda-taxas"></p>
+            </section>
+
+            <section class="cartao serie" aria-labelledby="h-serie">
+              <h2 id="h-serie">Conformidade por dia</h2>
+              <svg id="grafico" role="img" aria-label="Conformidade diária"></svg>
+              <p id="grafico-vazio" class="vazio" hidden></p>
+            </section>
+
+            <section class="cartao tipos" aria-labelledby="h-tipos">
+              <h2 id="h-tipos">Ocorrências por tipo</h2>
+              <div id="lista-tipos"></div>
+            </section>
+
+            <section class="cartao fila" aria-labelledby="h-fila">
+              <div class="fila-cab">
+                <h2 id="h-fila">Aguardando revisão</h2>
+                <button id="ver-todas" class="btn btn-pequeno" type="button">Ver todas</button>
+              </div>
+              <div id="fila-pendentes"></div>
+            </section>
+          </div>
+        </section>
+      </main>
     </div>
 
+    <!-- ================= DETALHES DA OCORRÊNCIA ================= -->
+    <dialog id="dialogo-detalhe" aria-labelledby="det-titulo">
+      <div class="dlg-cab">
+        <h2 id="det-titulo">Ocorrência</h2>
+        <button id="det-fechar" class="btn btn-icone" type="button" aria-label="Fechar detalhes">
+          <svg class="ic" aria-hidden="true"><use href="icones.svg#x" /></svg>
+        </button>
+      </div>
+
+      <div class="dlg-corpo">
+        <div class="dlg-foto">
+          <div id="foto-moldura">
+            <img id="foto-ampliada" alt="" />
+            <button id="btn-marcar-caixas" class="foto-controle" type="button" aria-pressed="true">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#olho" /></svg>
+              <span id="texto-marcar-caixas">Ocultar marcações</span>
+            </button>
+          </div>
+
+          <div id="seletor-trabalhador" class="seletor" hidden>
+            <span class="seletor-titulo">Trabalhadores na foto</span>
+            <div class="seletor-botoes" id="seletor-trabalhador-botoes"></div>
+          </div>
+        </div>
+
+        <div class="dlg-info">
+          <div class="pilulas" id="det-pilulas"></div>
+          <dl class="detalhes">
+            <div><dt>Data e hora</dt><dd id="det-data">—</dd></div>
+            <div><dt>Região do quadro</dt><dd id="det-regiao">—</dd></div>
+            <div><dt id="det-escopo-rotulo">Trabalhador</dt><dd id="det-escopo">—</dd></div>
+          </dl>
+
+          <div class="conf">
+            <h3 id="det-conf-titulo">Confiança das detecções</h3>
+            <div class="conf-item"><span>Pessoa</span><div class="barra"><i id="barra-pessoa"></i></div><output id="conf-pessoa">—</output></div>
+            <div class="conf-item"><span>Capacete</span><div class="barra"><i id="barra-capacete"></i></div><output id="conf-capacete">—</output></div>
+            <div class="conf-item"><span>Colete</span><div class="barra"><i id="barra-colete"></i></div><output id="conf-colete">—</output></div>
+          </div>
+
+          <section class="revisao" aria-labelledby="det-rev-titulo">
+            <h3 id="det-rev-titulo">Revisão</h3>
+            <p id="det-rev-estado" class="sub"></p>
+
+            <div id="rev-acoes" class="rev-acoes">
+              <button id="rev-confirmar" class="btn btn-primario" type="button">
+                <svg class="ic" aria-hidden="true"><use href="icones.svg#ok" /></svg>
+                <span>Confirmar infração</span>
+              </button>
+              <button id="rev-falso" class="btn" type="button" aria-expanded="false" aria-controls="rev-motivo-bloco">
+                <svg class="ic" aria-hidden="true"><use href="icones.svg#x" /></svg>
+                <span>Falso positivo</span>
+              </button>
+              <button id="rev-reabrir" class="btn" type="button" hidden>Reabrir para revisão</button>
+              <button id="rev-todas" class="btn" type="button" hidden>Confirmar todas pendentes da foto</button>
+            </div>
+
+            <fieldset id="rev-motivo-bloco" class="motivo" hidden>
+              <legend>Por que não é uma infração?</legend>
+              <label><input type="radio" name="motivo" value="EPI visível, mas não detectado" checked /> EPI visível, mas não detectado</label>
+              <label><input type="radio" name="motivo" value="Não é um trabalhador" /> Não é um trabalhador</label>
+              <label><input type="radio" name="motivo" value="Fora da área de risco" /> Fora da área de risco</label>
+              <label><input type="radio" name="motivo" value="Outro motivo" /> Outro motivo</label>
+              <label class="campo-bloco">
+                <span>Observação (opcional)</span>
+                <input id="rev-obs" type="text" maxlength="120" autocomplete="off" />
+              </label>
+              <div class="rev-acoes">
+                <button id="rev-falso-ok" class="btn btn-primario" type="button">Registrar falso positivo</button>
+                <button id="rev-falso-cancelar" class="btn" type="button">Cancelar</button>
+              </div>
+            </fieldset>
+          </section>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="avisos" class="avisos" aria-live="polite"></div>
+
     <script src="libs/socket.io.min.js"></script>
-    <script src="libs/chart.umd.min.js"></script>
     <script src="libs/arduino.js"></script>
     <script type="module" src="js/app.js"></script>
   </body>

@@ -1,8 +1,10 @@
 from fastapi.responses import FileResponse
 from collections import Counter
+from datetime import datetime, timedelta
 import json
 import math
 import servidor
+import amostragem
 import sqlite3
 import time
 import os
@@ -17,6 +19,11 @@ CAMINHO_BANCO = os.path.join(CAMINHO_PENDRIVE, "seguranca.db")
 PASTA_FOTOS = os.path.join(CAMINHO_PENDRIVE, "evidencias")
 
 
+def pendrive_pronto() -> bool:
+    """Versão silenciosa de verificar_pendrive (sem log), para uso a cada frame."""
+    return os.path.ismount(CAMINHO_PENDRIVE)
+
+
 def verificar_pendrive(caminho_pendrive: str) -> bool:
     if os.path.ismount(caminho_pendrive):
         mensagem = "[SUCESSO]: Pendrive montado e pronto"
@@ -28,6 +35,37 @@ def verificar_pendrive(caminho_pendrive: str) -> bool:
         print(mensagem)
         servidor.enviar_log(mensagem)
         return False
+
+
+COLUNAS_NOVAS = {
+    "caixas": "TEXT",
+    # Revisão pelo técnico (nada é apagado: descartar = marcar como falso positivo).
+    "status": "TEXT NOT NULL DEFAULT 'pendente'",
+    "motivo": "TEXT",
+    "revisado_em": "TEXT",
+}
+STATUS_VALIDOS = ("pendente", "confirmada", "descartada")
+
+
+def _migrar_esquema(cursor):
+    """Migração leve e idempotente: acrescenta colunas que faltem em bancos antigos."""
+    existentes = [linha[1] for linha in cursor.execute("PRAGMA table_info(ocorrencias)")]
+    for nome, definicao in COLUNAS_NOVAS.items():
+        if nome not in existentes:
+            cursor.execute(f"ALTER TABLE ocorrencias ADD COLUMN {nome} {definicao}")
+
+
+def _abrir_banco():
+    """Conexão com o esquema garantido (leituras antes da 1a infração não falham)."""
+    conexao = sqlite3.connect(CAMINHO_BANCO)
+    cursor = conexao.cursor()
+    tabela = cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ocorrencias'"
+    ).fetchone()
+    if tabela:
+        _migrar_esquema(cursor)
+        conexao.commit()
+    return conexao
 
 
 def inicializar_banco(caminho_banco: str) -> bool:
@@ -55,12 +93,7 @@ def inicializar_banco(caminho_banco: str) -> bool:
             )
         """)
 
-        # Migração leve: garante a coluna de bounding boxes em bancos antigos.
-        colunas_existentes = [
-            linha[1] for linha in cursor.execute("PRAGMA table_info(ocorrencias)")
-        ]
-        if "caixas" not in colunas_existentes:
-            cursor.execute("ALTER TABLE ocorrencias ADD COLUMN caixas TEXT")
+        _migrar_esquema(cursor)
 
         conexao.commit()
         mensagem = "[BANCO]: Tabela de ocorrências pronta!"
@@ -349,8 +382,14 @@ def excluir_ocorrencia(ocorrencia_id):
 def dados_ocorrencias():
     registros = []
     conexao = None
+    # Sem banco ainda (pendrive ausente / nenhuma infração): lista vazia e SEM log,
+    # porque a interface consulta isto de tempos em tempos.
+    if not os.path.isfile(CAMINHO_BANCO):
+        return registros
     try:
-        conexao = sqlite3.connect(CAMINHO_BANCO)
+        conexao = _abrir_banco()
+        if conexao.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='ocorrencias'").fetchone() is None:
+            return registros
 
         # Ativa o mapeamento por nome da coluna
         # Acessa tanto pelo indice como pelo nome
@@ -366,7 +405,10 @@ def dados_ocorrencias():
                      "conf_capacete, " \
                      "conf_colete, " \
                      "caminho_foto, " \
-                     "caixas " \
+                     "caixas, " \
+                     "COALESCE(status, 'pendente') AS status, " \
+                     "motivo, " \
+                     "revisado_em " \
                      "FROM ocorrencias " \
                      "ORDER BY id DESC"
         
@@ -395,32 +437,108 @@ def dados_ocorrencias():
             conexao.close()
     return registros
 
-def calcular_dados_dashboard():
-    dados = dados_ocorrencias() # Pega os dados do banco
-    dados_totais = len(dados) # Lê o tamnho da lista onde os dados estão
+def revisar_ocorrencia(ocorrencia_id, status, motivo=""):
+    """Registra a revisão do técnico. Nada é apagado: o descarte vira ``descartada``
+    (falso positivo) e a foto permanece como evidência da decisão."""
+    try:
+        ocorrencia_id = int(ocorrencia_id)
+    except (TypeError, ValueError):
+        return {"sucesso": False, "mensagem": "Identificador de ocorrência inválido."}
+    if status not in STATUS_VALIDOS:
+        return {"sucesso": False, "mensagem": "Status inválido."}
 
-    if dados_totais == 0:
-        return {
-            "total_observacoes": 0,
-            "resumo_conformidade": {},
-            "taxa_conformidade": {},
-            "eventos_recentes": []
-        }
+    motivo = (motivo or "").strip()[:300]
+    revisado_em = None if status == "pendente" else time.strftime("%Y-%m-%dT%H:%M:%S")
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.execute(
+            "UPDATE ocorrencias SET status = ?, motivo = ?, revisado_em = ? WHERE id = ?",
+            (status, motivo or None, revisado_em, ocorrencia_id),
+        )
+        conexao.commit()
+        if cursor.rowcount == 0:
+            return {"sucesso": False, "mensagem": "Ocorrência não encontrada."}
+    except sqlite3.Error as erro:
+        mensagem = f"[ERRO]: Falha ao revisar ocorrência | detalhes do erro: {erro}"
+        print(mensagem)
+        servidor.enviar_log(mensagem)
+        return {"sucesso": False, "mensagem": "Não foi possível registrar a revisão."}
+    finally:
+        if conexao:
+            conexao.close()
 
-    tipos = []
-    for dado in dados:
-        tipos.append(dado["tipo_infracao"])
+    return {"sucesso": True, "id": ocorrencia_id, "status": status,
+            "motivo": motivo or None, "revisado_em": revisado_em}
 
-    contagem_tipos = dict(Counter(tipos))
 
-    distribuicao_percentual = {}
-    for ocorrencias, qnt in contagem_tipos.items():
-        porcentagem = round((qnt / dados_totais) * 100, 1)
-        distribuicao_percentual[ocorrencias] = porcentagem
+def _limites_periodo(dias, agora=None):
+    """Dias de calendário: ``dias=1`` é hoje desde 00:00; ``7`` são os 7 últimos dias
+    incluindo hoje. Devolve (desde, ate, desde_anterior) como datetime."""
+    agora = agora or datetime.now()
+    dias = max(1, min(int(dias), 365))
+    meia_noite = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    desde = meia_noite - timedelta(days=dias - 1)
+    ate = meia_noite + timedelta(days=1)
+    return desde, ate, desde - timedelta(days=dias)
 
+
+def calcular_dados_dashboard(dias: int = 7):
+    """Dados do painel. Mantém as chaves antigas e acrescenta o período, a
+    conformidade (com denominador, vinda de ``amostragem``) e as contagens de revisão.
+
+    Descartadas (falso positivo) não contam como ocorrência do período."""
+    try:
+        dias = int(dias)
+    except (TypeError, ValueError):
+        dias = 7
+    desde, ate, desde_anterior = _limites_periodo(dias)
+    iso = lambda d: d.strftime("%Y-%m-%dT%H:%M:%S")
+    iso_min = lambda d: d.strftime("%Y-%m-%dT%H:%M")
+
+    todos = dados_ocorrencias()
+    do_periodo = [o for o in todos if iso(desde) <= (o["timestamp"] or "") < iso(ate)]
+    validas = [o for o in do_periodo if o["status"] != "descartada"]
+
+    por_tipo = dict(Counter(o["tipo_infracao"] for o in validas))
+    contagem_status = Counter(o["status"] for o in do_periodo)
+
+    resumo = {}
+    anterior = {}
+    try:
+        if not os.path.isfile(CAMINHO_BANCO):
+            raise FileNotFoundError("banco ainda nao existe")
+        resumo = amostragem.resumo(CAMINHO_BANCO, iso_min(desde), iso_min(ate))
+        anterior = amostragem.resumo(CAMINHO_BANCO, iso_min(desde_anterior), iso_min(desde))
+    except FileNotFoundError:
+        pass
+    except Exception as erro:   # painel nunca cai por causa da amostragem
+        print(f"[AVISO]: amostragem indisponível: {erro}")
+
+    total = len(validas)
     return {
-        "total_observacoes": dados_totais,
-        "resumo_conformidade": contagem_tipos,
-        "taxa_conformidade": distribuicao_percentual,
-        "eventos_recentes": dados
+        "periodo": {"dias": dias, "desde": desde.date().isoformat(),
+                    "ate": (ate - timedelta(days=1)).date().isoformat()},
+        # --- chaves antigas (compatibilidade) ---
+        "total_observacoes": total,
+        "resumo_conformidade": por_tipo,
+        "taxa_conformidade": {t: round(100 * n / total, 1) for t, n in por_tipo.items()} if total else {},
+        "eventos_recentes": do_periodo,
+        # --- novas ---
+        "ocorrencias": {
+            "total": total,
+            "pendentes": contagem_status.get("pendente", 0),
+            "confirmadas": contagem_status.get("confirmada", 0),
+            "descartadas": contagem_status.get("descartada", 0),
+        },
+        "infracoes_por_tipo": por_tipo,
+        "pessoas_observadas": resumo.get("pessoas_observadas", 0),
+        "trilhas": resumo.get("trilhas", 0),
+        "conformidade": resumo.get("conformidade"),
+        "capacete": resumo.get("capacete"),
+        "colete": resumo.get("colete"),
+        "fora_de_risco": resumo.get("fora_de_risco"),
+        "serie_diaria": resumo.get("serie_diaria", []),
+        "anterior": {"conformidade": anterior.get("conformidade"),
+                     "pessoas_observadas": anterior.get("pessoas_observadas", 0)},
     }

@@ -8,6 +8,7 @@ import traceback
 
 import servidor
 import banco
+import amostragem
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
 try:
@@ -187,8 +188,22 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
                 operario.risco_detectado = True
 
     _executar_seguro("analisar_seguranca", analisar_seguranca, lista_operarios)
+    trilhas_antes = _proximo_track_id
     _executar_seguro("filtrar_salvamento", filtrar_salvamento, lista_operarios, frame)
+    # filtrar_salvamento associa as trilhas; as novas contam como passagens.
+    _executar_seguro("amostragem", _amostrar, lista_operarios, bool(area_risco_ativa),
+                     max(0, _proximo_track_id - trilhas_antes))
     return lista_operarios
+
+
+def _amostrar(lista_operarios, area_ativa, trilhas_novas):
+    """Conta quantas pessoas foram OBSERVADAS (denominador da taxa de conformidade).
+
+    Roda a cada frame com pessoas, inclusive os conformes. Os contadores ficam em
+    memória e só vão ao banco a cada ``INTERVALO_GRAVACAO`` s, com o pendrive montado."""
+    amostragem.registrar(lista_operarios, area_ativa, trilhas_novas)
+    if banco.pendrive_pronto():
+        amostragem.descarregar(banco.CAMINHO_BANCO)
 
 
 def _executar_seguro(nome, funcao, *args):

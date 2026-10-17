@@ -1,10 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg">
-  <!-- Biblioteca de ícones SVG (sprite). Sem libs externas.
-       Uso no HTML:
-         <svg class="ic" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
-       Cor e traço (fill, stroke, stroke-width...) vêm da classe .ic no
-       style.css e herdam currentColor do elemento pai. -->
-
+  <!-- Sprite de ícones (sem libs). Uso: <svg class="ic"><use href="icones.svg#nome" /></svg>. Cor e traço vêm da classe .ic. -->
   <symbol id="escudo" viewBox="0 0 24 24">
     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
   </symbol>
@@ -92,4 +87,18 @@
     <line x1="18" y1="6" x2="6" y2="18" />
     <line x1="6" y1="6" x2="18" y2="18" />
   </symbol>
+
+  <!-- Navegação e estados da interface nova -->
+  <symbol id="lista" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h10" /></symbol>
+  <symbol id="painel" viewBox="0 0 24 24"><path d="M4 20V4M4 20h16M8 16v-5M12 16V8M16 16v-3" /></symbol>
+  <symbol id="ok" viewBox="0 0 24 24"><path d="M5 12l5 5 9-10" /></symbol>
+  <symbol id="x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" /></symbol>
+  <symbol id="aviso" viewBox="0 0 24 24"><path d="M12 4l9 16H3z" /><path d="M12 10v4M12 17v.5" /></symbol>
+  <symbol id="lua" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z" /></symbol>
+  <symbol id="sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M5 19l1.5-1.5M17.5 6.5L19 5" /></symbol>
+  <symbol id="sair" viewBox="0 0 24 24"><path d="M9 4H5v16h4M16 8l4 4-4 4M20 12H9" /></symbol>
+  <symbol id="mira" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3" /><path d="M12 9v6M9 12h6" /></symbol>
+  <symbol id="som" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M16.5 8.5a5 5 0 010 7" /></symbol>
+  <symbol id="mudo" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z" /><path d="M17 9l4 6M21 9l-4 6" /></symbol>
+  <symbol id="olho" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" /></symbol>
 </svg>
