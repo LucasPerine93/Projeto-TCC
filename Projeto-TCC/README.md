@@ -33,7 +33,7 @@ Projeto-TCC/
   assets/             # frontend (index.html, css/, js/ SVG puro, libs/)
   tests/              # suíte unittest (conftest garante detector 1º)
   docs/               # arquitetura.md, metodologia.md, api.md
-  tools/              # guia do preview local (não vai p/ placa)
+
 ```
 
 ## Como configurar a senha
