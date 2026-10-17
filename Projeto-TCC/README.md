@@ -62,5 +62,4 @@ sem hardware.
 - [Arquitetura e fluxo](docs/arquitetura.md)
 - [Metodologia da conformidade](docs/metodologia.md)
 - [API HTTP e segurança](docs/api.md)
-- [Preview local](tools/README.md)
 
