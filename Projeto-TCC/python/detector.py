@@ -6,24 +6,25 @@ import math
 import time
 import traceback
 
+import config
 import servidor
 import banco
 import amostragem
 
-camera = Camera(source=0, resolution=(720, 480), fps=10)
+camera = Camera(source=config.CAMERA_SOURCE, resolution=config.CAMERA_RESOLUTION, fps=config.CAMERA_FPS)
 try:
     deteccao = VideoObjectDetection(
         camera=camera,
-        debounce_sec=0,
-        confidence=0.5,
+        debounce_sec=config.DETECCAO_DEBOUNCE_SEC,
+        confidence=config.DETECCAO_CONFIANCA,
         camera_preview=True,
     )
 except TypeError:
     # Lib antiga (pin 6735581): sem camera_preview e sem frame no callback.
     deteccao = VideoObjectDetection(
         camera=camera,
-        debounce_sec=0,
-        confidence=0.5,
+        debounce_sec=config.DETECCAO_DEBOUNCE_SEC,
+        confidence=config.DETECCAO_CONFIANCA,
     )
 
 
@@ -51,8 +52,9 @@ class Operario:
 
 # Faixa vertical do corpo (fração da altura da caixa da pessoa, medida a
 # partir do topo) onde cada EPI deve ter o seu centro.
-ZONA_CAPACETE = (-0.15, 0.35)
-ZONA_COLETE = (0.36, 0.80)
+# Valores centrais em config.py (fonte unica); aliases abaixo por compatibilidade.
+ZONA_CAPACETE = config.ZONA_CAPACETE
+ZONA_COLETE = config.ZONA_COLETE
 
 
 # ---------------------------------------------------------------------------
@@ -278,7 +280,7 @@ def _atribuir_epi(epis, operarios, corpo):
 
 
 ultimo_alerta = 0.0
-TEMPO_ESPERA = 5
+TEMPO_ESPERA = config.TEMPO_ESPERA
 
 
 def analisar_seguranca(lista_de_operarios):
@@ -324,14 +326,14 @@ def analisar_seguranca(lista_de_operarios):
 # e apenas continuidade geometrica, suficiente para nao repetir a mesma
 # ocorrencia da mesma trajetoria.
 
-LIMIAR_IOU = 0.15          # IoU minimo para considerar a mesma trajetoria
-LIMIAR_DISTANCIA = 0.6     # fracao da menor diagonal entre as duas caixas
-MARGEM_AMBIGUIDADE = 0.05  # diferenca minima de placar para descartar empate
-TEMPO_ESPERA_SALVAR = 20   # cooldown POR trilha e POR tipo de infracao
+LIMIAR_IOU = config.LIMIAR_IOU                # IoU minimo para considerar a mesma trajetoria
+LIMIAR_DISTANCIA = config.LIMIAR_DISTANCIA   # fracao da menor diagonal entre as duas caixas
+MARGEM_AMBIGUIDADE = config.MARGEM_AMBIGUIDADE  # diferenca minima de placar para descartar empate
+TEMPO_ESPERA_SALVAR = config.TEMPO_ESPERA_SALVAR  # cooldown POR trilha e POR tipo de infracao
 # A trilha vive pelo menos tanto quanto o cooldown: se a pessoa some atras de
 # um obstaculo e volta antes do cooldown acabar, mantem o mesmo track_id e nao
 # gera ocorrencia duplicada.
-TEMPO_VIDA_TRILHA = float(TEMPO_ESPERA_SALVAR)
+TEMPO_VIDA_TRILHA = float(config.TEMPO_VIDA_TRILHA)
 
 _proximo_track_id = 1
 _trilhas_ativas = {}       # track_id -> {"box": tuple, "visto_em": float}

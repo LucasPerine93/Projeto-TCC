@@ -7,12 +7,14 @@ import time
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-COOKIE = "sessao"
-DURACAO_SESSAO = 8 * 3600
-DURACAO_TICKET = 30
-MAX_FALHAS = 5
-BLOQUEIO_BASE = 30
-ITERACOES = 200_000
+import config
+
+COOKIE = config.COOKIE_SESSAO
+DURACAO_SESSAO = config.DURACAO_SESSAO
+DURACAO_TICKET = config.DURACAO_TICKET
+MAX_FALHAS = config.MAX_FALHAS
+BLOQUEIO_BASE = config.BLOQUEIO_BASE
+ITERACOES = config.ITERACOES_PBKDF2
 
 _sessoes = {}
 _tickets = {}

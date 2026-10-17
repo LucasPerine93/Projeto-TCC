@@ -38,6 +38,18 @@ data/
 **/data/*.jsonl
 *.jsonl
 procedure_events.jsonl
+# Banco SQLite e evidencias gerados em runtime/testes/preview.
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+evidencias/
+**/evidencias/
+pendrive/
+# Patch temporario de correcoes (resquicio local, nao versionar).
+correcoes.patch
 
 # --- SO / editores ---
 .DS_Store

@@ -6,9 +6,9 @@ import time
 import unittest
 from types import SimpleNamespace
 
-# Garante que importamos do diretório correto
+# Garante que importamos do diretorio python/ (tests/ fica ao lado de python/).
 import sys
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "python")))
 
 import amostragem
 

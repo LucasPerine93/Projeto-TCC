@@ -4,7 +4,7 @@ filtrar_salvamento -> salvar_cena -> SQLite + .jpg).
 
 Rodar (sem pytest, sem hardware):
 
-    cd python && python3 -m unittest -v test_pipeline
+    python -m unittest discover -s tests -v   (a partir de Projeto-TCC/)
 
 Fora da placa, as libs ``arduino.*`` e ``fastapi`` são substituídas por stubs.
 Na placa (libs reais instaladas) os stubs não entram.
@@ -18,7 +18,7 @@ import types
 import unittest
 from unittest import mock
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "python")))
 
 import numpy as np
 

@@ -3,6 +3,7 @@ from collections import Counter
 from datetime import datetime, timedelta
 import json
 import math
+import config
 import servidor
 import amostragem
 import sqlite3
@@ -13,10 +14,10 @@ import os
     quando montar a unidade de disco, ela deve ser 
     montada na pasta do projeto mas acessada por "/app" """
 
-CAMINHO_PENDRIVE = "/app/pendrive" 
+CAMINHO_PENDRIVE = config.CAMINHO_PENDRIVE
 
-CAMINHO_BANCO = os.path.join(CAMINHO_PENDRIVE, "seguranca.db")
-PASTA_FOTOS = os.path.join(CAMINHO_PENDRIVE, "evidencias")
+CAMINHO_BANCO = config.CAMINHO_BANCO
+PASTA_FOTOS = config.PASTA_FOTOS
 
 
 def pendrive_pronto() -> bool:
@@ -37,14 +38,8 @@ def verificar_pendrive(caminho_pendrive: str) -> bool:
         return False
 
 
-COLUNAS_NOVAS = {
-    "caixas": "TEXT",
-    # Revisão pelo técnico (nada é apagado: descartar = marcar como falso positivo).
-    "status": "TEXT NOT NULL DEFAULT 'pendente'",
-    "motivo": "TEXT",
-    "revisado_em": "TEXT",
-}
-STATUS_VALIDOS = ("pendente", "confirmada", "descartada")
+COLUNAS_NOVAS = dict(config.COLUNAS_NOVAS)
+STATUS_VALIDOS = config.STATUS_VALIDOS
 
 
 def _migrar_esquema(cursor):

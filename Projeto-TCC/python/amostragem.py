@@ -8,14 +8,15 @@ gravadas em baldes de 1 minuto a cada INTERVALO_GRAVACAO s (poupa o pendrive:
 import sqlite3
 import time
 
-INTERVALO_GRAVACAO = 30
-MAX_BALDES_EM_MEMORIA = 120          # se o pendrive sumir, guarda ~2 h e descarta o mais antigo
+import config
+
+INTERVALO_GRAVACAO = config.INTERVALO_GRAVACAO
+MAX_BALDES_EM_MEMORIA = config.MAX_BALDES_EM_MEMORIA  # se o pendrive sumir, guarda ~2 h e descarta o mais antigo
 
 _baldes = {}                         # "YYYY-MM-DDTHH:MM" -> dict de contadores
 _ultima_gravacao = 0.0
 
-CAMPOS = ("pessoas", "com_capacete", "com_colete", "conformes",
-          "risco_ativo", "em_risco", "trilhas_novas")
+CAMPOS = config.CAMPOS_AMOSTRA
 
 
 def criar_tabela(con):
