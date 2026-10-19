@@ -107,11 +107,7 @@ def analisar_seguranca(lista_de_operarios):
 
     if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
         for operario in lista_de_operarios:
-            if (
-                operario.tem_colete is True
-                and operario.tem_capacete is True
-                and operario.risco_detectado is False
-            ):
+            if (operario.tem_colete is True and operario.tem_capacete is True and operario.risco_detectado is False):
                 mensagem = "[OK]: Operario com todos os EPIs e seguro!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
@@ -147,6 +143,9 @@ def filtrar_salvamento(lista_de_operarios, frame):
     if (tempo_atual - ultimo_salvamento) >= TEMPO_ESPERA_SALVAR:
         if salvar_imagem == True:
             for operario in lista_de_operarios:
+                if operario.tem_colete == True and operario.tem_capacete == True:
+                    banco.salvar_ocorrencias("Seguro, todos os EPIs detectados", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+                    
                 if operario.tem_colete == False and operario.tem_capacete == True:
                     banco.salvar_ocorrencias("Sem colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
 
