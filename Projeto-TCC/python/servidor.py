@@ -1,3 +1,16 @@
+"""
+Módulo FastAPI do servidor web do Painel de EPIs.
+
+Expõe:
+- WebSocket bidirecional com WebUI Arduino para área de risco e logs
+- Rotas HTTP públicas: /login, /sessao, /logout (autenticação)
+- Rotas HTTP protegidas: /foto, /listar_ocorrencias, /dashboard_dados, /revisar_ocorrencia, /excluir_ocorrencia
+
+Fluxo:
+1. Frontend marca área de risco no canvas → 'area_marcada' → atualiza box_risco global
+2. Detector.py consulta box_risco via verificar_area_risco()
+3. Logs de detecção são enviados via enviar_log() → WebSocket 'log_deteccao'
+"""
 from fastapi import Request
 from arduino.app_bricks.web_ui import WebUI
 import banco
@@ -9,16 +22,19 @@ risco = False
 ui = WebUI()
 
 def calcular_area(_, data):
+    """Atualiza coordenadas da área de risco marcada pelo usuário (x1,y1,x2,y2)."""
     global box_risco, risco
     box_risco = [data["x1"], data["y1"], data["x2"], data["y2"]]
     risco = True
 
 def limpar_box_risco(*args):
+    """Remove área de risco configurada (desativa verificação de risco)."""
     global box_risco, risco
     box_risco = None
     risco = False
 
 def enviar_log(mensagem):
+    """Envia log de detecção para frontend via WebSocket 'log_deteccao'."""
     ui.send_message("log_deteccao", mensagem)
 
 ui.on_message('area_marcada', calcular_area)

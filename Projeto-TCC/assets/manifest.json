@@ -1,13 +1,23 @@
 {
   "name": "Painel de EPIs",
-  "short_name": "Painel EPIs",
-  "description": "Painel de monitoramento de conformidade de EPIs (capacete e colete).",
-  "start_url": "/",
+  "short_name": "EPIs",
+  "description": "Monitoramento inteligente de EPIs e segurança",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#f3f5f8",
+  "background_color": "#071a3b",
   "theme_color": "#1550c8",
   "icons": [
-    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+    {
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }

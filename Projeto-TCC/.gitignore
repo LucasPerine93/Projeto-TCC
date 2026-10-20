@@ -55,3 +55,14 @@ correcoes.patch
 .DS_Store
 Thumbs.db
 *.swp
+
+# --- Obsidian (configuração local do vault, não do sistema) ---
+.obsidian/
+
+# --- Gerador de ícones/favicon (skill artefato, não parte do sistema) ---
+assets/favicon-preview.png
+assets/favicon.svg
+assets/icon-master.png
+assets/install_favicons.py
+assets/index-head-snippet.html
+assets/Projeto-TCC/

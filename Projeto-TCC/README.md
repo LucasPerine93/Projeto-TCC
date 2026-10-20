@@ -57,6 +57,17 @@ Ordem de importação (`detector` antes de `banco`) e stubs `arduino.*`/
 `fastapi` são tratados em `tests/conftest.py` — no Windows/CI os testes rodam
 sem hardware.
 
+## Interface do Sistema (Capturas de Tela)
+
+Capturas geradas com Playwright (headless, viewport 1440×900, deviceScaleFactor 2)
+contra o preview local (`_preview_tcc/preview_server.py`, porta 8017, senha `admin123`).
+
+- [01 — Tela de bloqueio](docs/img/01_tela_bloqueio.png) · tela inicial com formulário de acesso
+- [02 — Painel Analítico (Dashboard)](docs/img/02_painel_dashboard.png) · conformidade geral, gráfico SVG de série diária, taxas e ocorrências por tipo
+- [03 — Galeria de Ocorrências](docs/img/03_galeria_ocorrencias.png) · cartões com fotos, filtros de status/tipo e revisão
+- [04 — Monitoramento ao Vivo](docs/img/04_monitoramento_ao_vivo.png) · transmissão da câmera, área de risco e logs em tempo real
+- [05 — Painel com tema alternativo](docs/img/05_painel_tema_alternativo.png) · tema escuro (toggle no topo)
+
 ## Documentação
 
 - [Arquitetura e fluxo](docs/arquitetura.md)

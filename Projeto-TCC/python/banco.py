@@ -3,7 +3,6 @@ from collections import Counter
 from datetime import datetime, timedelta
 import json
 import math
-import config
 import servidor
 import amostragem
 import sqlite3
@@ -14,10 +13,10 @@ import os
     quando montar a unidade de disco, ela deve ser 
     montada na pasta do projeto mas acessada por "/app" """
 
-CAMINHO_PENDRIVE = config.CAMINHO_PENDRIVE
+CAMINHO_PENDRIVE = "/app/pendrive"
 
-CAMINHO_BANCO = config.CAMINHO_BANCO
-PASTA_FOTOS = config.PASTA_FOTOS
+CAMINHO_BANCO = os.path.join(CAMINHO_PENDRIVE, "seguranca.db")
+PASTA_FOTOS = os.path.join(CAMINHO_PENDRIVE, "evidencias")
 
 
 def pendrive_pronto() -> bool:
@@ -38,8 +37,14 @@ def verificar_pendrive(caminho_pendrive: str) -> bool:
         return False
 
 
-COLUNAS_NOVAS = dict(config.COLUNAS_NOVAS)
-STATUS_VALIDOS = config.STATUS_VALIDOS
+COLUNAS_NOVAS = {
+    "caixas": "TEXT",
+    # Revisão pelo técnico (nada é apagado: descartar = marcar como falso positivo).
+    "status": "TEXT NOT NULL DEFAULT 'pendente'",
+    "motivo": "TEXT",
+    "revisado_em": "TEXT",
+}
+STATUS_VALIDOS = ("pendente", "confirmada", "descartada")
 
 
 def _migrar_esquema(cursor):
@@ -113,9 +118,11 @@ def _to_float(val, default=0.0):
     escalares NumPy (``np.floating``/``np.integer``) e ``np.ndarray`` de um
     unico elemento. Arrays maiores, listas, NaN e infinito retornam ``default``.
     """
+    # Guard: retorno imediato para None
     if val is None:
         return default
 
+    # Guard: normaliza arrays NumPy para escalar Python
     if hasattr(val, "item") and hasattr(val, "dtype"):
         try:
             if getattr(val, "size", 1) != 1:
@@ -124,9 +131,11 @@ def _to_float(val, default=0.0):
         except Exception:
             return default
 
+    # Guard: bool converte direto (True=1.0, False=0.0)
     if isinstance(val, bool):
         return float(val)
 
+    # Guard: string normaliza vírgula decimal
     if isinstance(val, str):
         texto = val.strip().replace(",", ".")
         if not texto:
@@ -136,31 +145,38 @@ def _to_float(val, default=0.0):
         except ValueError:
             return default
 
+    # Conversão final com validação NaN/Inf
     try:
         resultado = float(val)
+        if math.isnan(resultado) or math.isinf(resultado):
+            return default
+        return resultado
     except (TypeError, ValueError, OverflowError):
         return default
-
-    if math.isnan(resultado) or math.isinf(resultado):
-        return default
-    return resultado
 
 
 def _to_lista(valor, inteiro: bool = False):
     """Converte caixas/numéricos em ``list[float]`` (ou ``list[int]``) nativos,
     descartando NumPy e garantindo que o JSON foge do TypeError."""
+    # Guard: retorna None para valor nulo
     if valor is None:
         return None
+    
+    # Normaliza arrays NumPy para lista Python
     try:
         if hasattr(valor, "tolist"):
             valor = valor.tolist()
     except Exception:
         pass
+    
+    # Guard: processa listas/tuplas recursivamente
     if isinstance(valor, (list, tuple)):
         itens = [_to_float(v, None) for v in valor]
         if any(v is None for v in itens):
             return None
         return [int(v) for v in itens] if inteiro else itens
+    
+    # Guard: valor escalar (fallback)
     numero = _to_float(valor, None)
     if numero is None:
         return None

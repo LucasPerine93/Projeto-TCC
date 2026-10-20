@@ -6,25 +6,24 @@ import math
 import time
 import traceback
 
-import config
 import servidor
 import banco
 import amostragem
 
-camera = Camera(source=config.CAMERA_SOURCE, resolution=config.CAMERA_RESOLUTION, fps=config.CAMERA_FPS)
+camera = Camera(source=0, resolution=(720, 480), fps=10)
 try:
     deteccao = VideoObjectDetection(
         camera=camera,
-        debounce_sec=config.DETECCAO_DEBOUNCE_SEC,
-        confidence=config.DETECCAO_CONFIANCA,
+        debounce_sec=0,
+        confidence=0.5,
         camera_preview=True,
     )
 except TypeError:
     # Lib antiga (pin 6735581): sem camera_preview e sem frame no callback.
     deteccao = VideoObjectDetection(
         camera=camera,
-        debounce_sec=config.DETECCAO_DEBOUNCE_SEC,
-        confidence=config.DETECCAO_CONFIANCA,
+        debounce_sec=0,
+        confidence=0.5,
     )
 
 
@@ -52,9 +51,8 @@ class Operario:
 
 # Faixa vertical do corpo (fração da altura da caixa da pessoa, medida a
 # partir do topo) onde cada EPI deve ter o seu centro.
-# Valores centrais em config.py (fonte unica); aliases abaixo por compatibilidade.
-ZONA_CAPACETE = config.ZONA_CAPACETE
-ZONA_COLETE = config.ZONA_COLETE
+ZONA_CAPACETE = (-0.15, 0.35)
+ZONA_COLETE = (0.36, 0.80)
 
 
 # ---------------------------------------------------------------------------
@@ -67,11 +65,11 @@ def _to_float(val, default=0.0):
     escalares NumPy (``np.floating``/``np.integer``) e ``np.ndarray`` com um
     único elemento. Arrays maiores, listas, NaN e infinito retornam ``default``.
     """
+    # Guard: retorno imediato para None
     if val is None:
         return default
 
-    # NumPy: escalar (np.float32, np.int64...) ou array de 1 elemento.
-    # Não importa o numpy aqui: ``size``/``item`` bastam (duck typing).
+    # Guard: normaliza arrays NumPy para escalar Python (duck typing)
     if hasattr(val, "item") and hasattr(val, "dtype"):
         try:
             if getattr(val, "size", 1) != 1:
@@ -80,9 +78,11 @@ def _to_float(val, default=0.0):
         except Exception:
             return default
 
+    # Guard: bool converte direto (True=1.0, False=0.0)
     if isinstance(val, bool):
         return float(val)
 
+    # Guard: string normaliza vírgula decimal
     if isinstance(val, str):
         texto = val.strip().replace(",", ".")
         if not texto:
@@ -92,14 +92,14 @@ def _to_float(val, default=0.0):
         except ValueError:
             return default
 
+    # Conversão final com validação NaN/Inf
     try:
         resultado = float(val)
+        if math.isnan(resultado) or math.isinf(resultado):
+            return default
+        return resultado
     except (TypeError, ValueError, OverflowError):
         return default
-
-    if math.isnan(resultado) or math.isinf(resultado):
-        return default
-    return resultado
 
 
 def _to_xyxy(dado: dict, chaves: list[str], default: float) -> list[float]:
@@ -184,7 +184,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         operario.conf_colete = _get_conf(dado_epi)
         operario.box_colete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
 
-    if area_risco_ativa:
+    if area_risco_ativa == True:
         for operario in lista_operarios:
             if verificar_area_risco(box_area_risco, operario.box_xyxy):
                 operario.risco_detectado = True
@@ -279,8 +279,8 @@ def _atribuir_epi(epis, operarios, corpo):
     return atribuicoes
 
 
-ultimo_alerta = 0.0
-TEMPO_ESPERA = config.TEMPO_ESPERA
+ultimo_alerta = 0
+TEMPO_ESPERA = 5
 
 
 def analisar_seguranca(lista_de_operarios):
@@ -291,25 +291,25 @@ def analisar_seguranca(lista_de_operarios):
     if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
         for operario in lista_de_operarios:
             if (
-                operario.tem_colete is True
-                and operario.tem_capacete is True
-                and operario.risco_detectado is False
+                operario.tem_colete == True
+                and operario.tem_capacete == True
+                and operario.risco_detectado == False
             ):
                 mensagem = "[OK]: Operario com todos os EPIs e seguro!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
 
-            if operario.tem_colete is False:
+            if operario.tem_colete == False:
                 mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
 
-            if operario.tem_capacete is False:
+            if operario.tem_capacete == False:
                 mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
 
-            if operario.risco_detectado is True:
+            if operario.risco_detectado == True:
                 mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!"
                 print(mensagem)
                 servidor.enviar_log(mensagem)
@@ -326,14 +326,14 @@ def analisar_seguranca(lista_de_operarios):
 # e apenas continuidade geometrica, suficiente para nao repetir a mesma
 # ocorrencia da mesma trajetoria.
 
-LIMIAR_IOU = config.LIMIAR_IOU                # IoU minimo para considerar a mesma trajetoria
-LIMIAR_DISTANCIA = config.LIMIAR_DISTANCIA   # fracao da menor diagonal entre as duas caixas
-MARGEM_AMBIGUIDADE = config.MARGEM_AMBIGUIDADE  # diferenca minima de placar para descartar empate
-TEMPO_ESPERA_SALVAR = config.TEMPO_ESPERA_SALVAR  # cooldown POR trilha e POR tipo de infracao
+LIMIAR_IOU = 0.15          # IoU minimo para considerar a mesma trajetoria
+LIMIAR_DISTANCIA = 0.6     # fracao da menor diagonal entre as duas caixas
+MARGEM_AMBIGUIDADE = 0.05  # diferenca minima de placar para descartar empate
+TEMPO_ESPERA_SALVAR = 20   # cooldown POR trilha e POR tipo de infracao
 # A trilha vive pelo menos tanto quanto o cooldown: se a pessoa some atras de
 # um obstaculo e volta antes do cooldown acabar, mantem o mesmo track_id e nao
 # gera ocorrencia duplicada.
-TEMPO_VIDA_TRILHA = float(config.TEMPO_VIDA_TRILHA)
+TEMPO_VIDA_TRILHA = float(TEMPO_ESPERA_SALVAR)
 
 _proximo_track_id = 1
 _trilhas_ativas = {}       # track_id -> {"box": tuple, "visto_em": float}
@@ -497,7 +497,7 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
     * um unico arquivo .jpg e gravado por cena, mesmo com varios registros.
     """
     agora = time.time()
-    if not lista_de_operarios:
+    if lista_de_operarios == []:
         return
 
     associar_trilhas(lista_de_operarios, agora)
@@ -515,7 +515,7 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
 
         aprovados.append((operario, tipo))
 
-    if not aprovados:
+    if aprovados == []:
         return
 
     # Lib antiga / stubs de teste: sem frame nao ha foto para persistir,

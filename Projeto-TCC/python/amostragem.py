@@ -1,25 +1,33 @@
-"""Denominador da taxa de conformidade: quantas pessoas foram OBSERVADAS, não só quantas erraram.
+"""
+Módulo de amostragem baseada em Pessoa-Frame para cálculo científico de conformidade.
 
-Unidade = "pessoa-frame" (uma pessoa vista em um frame). A razão
-conformes / pessoas independe do FPS. As contagens ficam em memória e são
-gravadas em baldes de 1 minuto a cada INTERVALO_GRAVACAO s (poupa o pendrive:
-10 fps nunca vira 10 escritas por segundo).
+Denominador da taxa de conformidade: quantas pessoas foram OBSERVADAS, não só quantas erraram.
+
+Unidade = "pessoa-frame" (uma pessoa vista em um frame). A razão conformes/pessoas
+independe do FPS e elimina falsos positivos de frames vazios. As contagens ficam
+em memória e são gravadas em baldes de 1 minuto a cada INTERVALO_GRAVACAO s
+(poupa o pendrive: 10 fps nunca vira 10 escritas por segundo).
+
+Métrica Científica:
+- pessoas_observadas: total de detecções válidas (denominador)
+- conformes: pessoas com capacete E colete E fora de área de risco
+- taxa = conformes / pessoas_observadas × 100
 """
 import sqlite3
 import time
 
-import config
-
-INTERVALO_GRAVACAO = config.INTERVALO_GRAVACAO
-MAX_BALDES_EM_MEMORIA = config.MAX_BALDES_EM_MEMORIA  # se o pendrive sumir, guarda ~2 h e descarta o mais antigo
+INTERVALO_GRAVACAO = 30
+MAX_BALDES_EM_MEMORIA = 120          # se o pendrive sumir, guarda ~2 h e descarta o mais antigo
 
 _baldes = {}                         # "YYYY-MM-DDTHH:MM" -> dict de contadores
 _ultima_gravacao = 0.0
 
-CAMPOS = config.CAMPOS_AMOSTRA
+CAMPOS = ("pessoas", "com_capacete", "com_colete", "conformes",
+          "risco_ativo", "em_risco", "trilhas_novas")
 
 
 def criar_tabela(con):
+    """Cria tabela amostras_minuto com 7 contadores agregados por minuto (chave primária)."""
     con.execute("""CREATE TABLE IF NOT EXISTS amostras_minuto (
         minuto TEXT PRIMARY KEY,
         pessoas INTEGER NOT NULL DEFAULT 0, com_capacete INTEGER NOT NULL DEFAULT 0,
@@ -29,7 +37,12 @@ def criar_tabela(con):
 
 
 def registrar(operarios, area_ativa, trilhas_novas=0, agora=None):
-    """Chamar uma vez por frame, DEPOIS de associar_trilhas e de definir tem_*/risco_detectado."""
+    """
+    Incrementa contadores do minuto atual baseado nas detecções do frame.
+    
+    Chamar uma vez por frame, DEPOIS de associar_trilhas e definir tem_*/risco_detectado.
+    Baldes acumulam em memória até descarregar() gravá-los no SQLite.
+    """
     agora = agora or time.time()
     chave = time.strftime("%Y-%m-%dT%H:%M", time.localtime(agora))
     b = _baldes.setdefault(chave, dict.fromkeys(CAMPOS, 0))
@@ -47,7 +60,17 @@ def registrar(operarios, area_ativa, trilhas_novas=0, agora=None):
 
 
 def descarregar(caminho_banco, forcar=False, agora=None):
-    """Grava os baldes pendentes (soma em cima do que já existe no minuto)."""
+    """
+    Grava baldes pendentes no SQLite somando valores existentes (INSERT...ON CONFLICT).
+    
+    Args:
+        caminho_banco: Path do seguranca.db
+        forcar: Ignora INTERVALO_GRAVACAO e grava imediatamente
+        agora: Timestamp customizado (default: time.time())
+    
+    Returns:
+        True se gravou com sucesso, False se pulou ou falhou (mantém baldes em memória)
+    """
     global _ultima_gravacao
     agora = agora or time.time()
     if not _baldes or (not forcar and agora - _ultima_gravacao < INTERVALO_GRAVACAO):
@@ -73,11 +96,23 @@ def descarregar(caminho_banco, forcar=False, agora=None):
 
 
 def _taxa(parte, total):
+    """Calcula porcentagem arredondada com 1 casa decimal. Retorna None se total=0."""
     return None if not total else round(100 * parte / total, 1)
 
 
 def resumo(caminho_banco, desde_iso, ate_iso):
-    """Taxas do período [desde_iso, ate_iso). None = sem dados (nunca 0% inventado)."""
+    """
+    Calcula taxas agregadas do período [desde_iso, ate_iso) e série diária.
+    
+    Args:
+        caminho_banco: Path do seguranca.db
+        desde_iso: Data/hora início (formato "YYYY-MM-DDTHH:MM")
+        ate_iso: Data/hora fim exclusivo
+    
+    Returns:
+        Dict com pessoas_observadas, conformidade%, capacete%, colete%,
+        fora_de_risco%, trilhas, serie_diaria. None = sem dados (nunca 0% inventado)
+    """
     con = sqlite3.connect(caminho_banco)
     try:
         criar_tabela(con)
