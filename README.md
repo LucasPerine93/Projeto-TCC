@@ -104,4 +104,4 @@ Projeto-TCC/
    - Use as rotas `/dashboard_dados` para ver estatísticas, `/listar_ocorrencias` para ver o banco, ou faça login (`/login`) para gestão de revisões
 ## Licença
 
-Projeto de TCC — Instituto de Tecnologia. Desenvolvido por Lucas.
+Projeto de TCC — Instituto de Tecnologia. Desenvolvido por Lucas Perine e Victor Rodrigues.
