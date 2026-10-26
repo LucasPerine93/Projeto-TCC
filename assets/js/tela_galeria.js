@@ -205,4 +205,4 @@ botaoFecharImagemAmpliada.addEventListener("click", () => {
 
 botaoAtualizarFotos.addEventListener("click", carregarFotos);
 
-botaoVoltarCamera.addEventListener("click", () => navegarPara("camera"));
+botaoVoltarCamera.addEventListener("click", () => navegarPara("painel"));

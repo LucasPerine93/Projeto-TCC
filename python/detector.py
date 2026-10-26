@@ -20,6 +20,7 @@ deteccao = VideoObjectDetection(
 @dataclass
 class Operario:
     box_xyxy: tuple
+    id: int | None = None
     tem_colete: bool = False
     tem_capacete: bool = False
     risco_detectado: bool = False
@@ -29,9 +30,7 @@ class Operario:
     conf_capacete: float | None = None
     conf_colete: float | None = None
 
-
 def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame):
-
     lista_operarios = []
 
     pessoas_detectadas = specs_frame.get("person", [])
@@ -54,9 +53,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         for operario in lista_operarios:
             # Região do topo a 35% do corpo fica o capacete.
             if verificar_epi(box_capacete, operario.box_xyxy, (-0.15, 0.35)):
-                centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(
-                    operario.box_xyxy, box_capacete, 0.10 # Posiciona o centro na testa do operario
-                )
+                centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(operario.box_xyxy, box_capacete, 0.10) # Posiciona o centro na testa do operario
                 dist = calcular_distacia(centro_capacete, centro_cabeca_operario)
                 if dist < menor_distancia:
                     menor_distancia = dist
@@ -75,9 +72,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
         for operario in lista_operarios:
             # Região de 36% a 80% do corpo fica o colete.
             if verificar_epi(box_colete, operario.box_xyxy, (0.36, 0.80)):
-                centro_tronco_operario, centro_colete = calcular_centro_com_regiao(
-                    operario.box_xyxy, box_colete, 0.55
-                )
+                centro_tronco_operario, centro_colete = calcular_centro_com_regiao(operario.box_xyxy, box_colete, 0.55)
                 dist = calcular_distacia(centro_colete, centro_tronco_operario)
                 if dist < menor_distancia:
                     menor_distancia = dist
@@ -93,71 +88,120 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
                 operario.risco_detectado = True
 
     analisar_seguranca(lista_operarios)
-    filtrar_salvamento(lista_operarios, frame)
-    return lista_operarios
-
-
-ultimo_alerta = 0
-TEMPO_ESPERA = 5
-
-def analisar_seguranca(lista_de_operarios):
-
-    global ultimo_alerta, salvar_imagem
-    tempo_atual = time.time()
-
-    if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
-        for operario in lista_de_operarios:
-            if (operario.tem_colete is True and operario.tem_capacete is True and operario.risco_detectado is False):
-                mensagem = "[OK]: Operario com todos os EPIs e seguro!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-                salvar_imagem = False
-
-            if operario.tem_colete is False:
-                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-                salvar_imagem = True
-
-            if operario.tem_capacete is False:
-                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-                salvar_imagem = True
-
-            if operario.risco_detectado is True:
-                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-                salvar_imagem = True
-
-        ultimo_alerta = tempo_atual
+    rastrear_operarios(lista_operarios, frame)
 
 salvar_imagem = False
-ultimo_salvamento = 0
-TEMPO_ESPERA_SALVAR = 20
+def analisar_seguranca(lista_de_operarios):
+    global salvar_imagem
+    for operario in lista_de_operarios:
+        if (operario.tem_colete is True and operario.tem_capacete is True and operario.risco_detectado is False):
+            mensagem = "[OK]: Operario com todos os EPIs e seguro!"
+            print(mensagem)
+            servidor.enviar_log(mensagem)
+            salvar_imagem = False
+
+        if operario.tem_colete is False:
+            mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!"
+            print(mensagem)
+            servidor.enviar_log(mensagem)
+            salvar_imagem = True
+
+        if operario.tem_capacete is False:
+            mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!"
+            print(mensagem)
+            servidor.enviar_log(mensagem)
+            salvar_imagem = True
+
+        if operario.risco_detectado is True:
+            mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!"
+            print(mensagem)
+            servidor.enviar_log(mensagem)
+            salvar_imagem = True
+
+
 def filtrar_salvamento(lista_de_operarios, frame):
+    global salvar_imagem
 
-    global ultimo_salvamento, salvar_imagem
+    if salvar_imagem == True:
+        for operario in lista_de_operarios:
+            if operario.tem_colete == True and operario.tem_capacete == True:
+                banco.salvar_ocorrencias("Seguro, todos os EPIs detectados", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+            if operario.tem_colete == False and operario.tem_capacete == True:
+                banco.salvar_ocorrencias("Sem colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+            if operario.tem_colete == True and operario.tem_capacete == False:
+                banco.salvar_ocorrencias("Sem capacete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+            if operario.tem_colete == False and operario.tem_capacete == False:
+                banco.salvar_ocorrencias("Sem capacete e colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+
+        salvar_imagem = False
+
+dados_operarios = {}
+DISTANCIA_MAXIMA = 90
+proximo_id = 0
+def rastrear_operarios(lista_operarios, frame):
+    global dados_operarios, proximo_id
+
+    ids_ja_usados_neste_frame = set()
     tempo_atual = time.time()
-    if (tempo_atual - ultimo_salvamento) >= TEMPO_ESPERA_SALVAR:
-        if salvar_imagem == True:
-            for operario in lista_de_operarios:
-                if operario.tem_colete == True and operario.tem_capacete == True:
-                    banco.salvar_ocorrencias("Seguro, todos os EPIs detectados", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
-                    
-                if operario.tem_colete == False and operario.tem_capacete == True:
-                    banco.salvar_ocorrencias("Sem colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
 
-                if operario.tem_colete == True and operario.tem_capacete == False:
-                    banco.salvar_ocorrencias("Sem capacete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+    ids_para_remover = []
+    if dados_operarios is not None:
+        for id_cadastrado, dado_operario in dados_operarios.items():
+            if abs(dado_operario["visto_por_ultimo"] - tempo_atual) > 20:
+                ids_para_remover.append(id_cadastrado)
+    
+        if ids_para_remover is not None:
+            for id_remover in ids_para_remover:
+                del dados_operarios[id_remover]
 
-                if operario.tem_colete == False and operario.tem_capacete == False:
-                    banco.salvar_ocorrencias("Sem capacete e colete", operario.box_xyxy, operario.conf_pessoa, operario.conf_capacete, operario.conf_colete, frame)
+    for operario in lista_operarios:
+        if operario.id in ids_ja_usados_neste_frame:
+            continue 
 
-                salvar_imagem = False
-        ultimo_salvamento = tempo_atual
+        x1, y1, x2, y2 = operario.box_xyxy
+        centro_op_detectado = ((x1 + x2) / 2, (y1 + y2) / 2)
+        id_encontrado = None
 
+        for id_cadastrado, dado_operario in dados_operarios.items():
+            if id_cadastrado in ids_ja_usados_neste_frame:
+                continue
+
+            distancia = math.dist(dado_operario["centro"], centro_op_detectado)
+            if distancia < DISTANCIA_MAXIMA:
+                id_encontrado = id_cadastrado
+                break
+
+        if id_encontrado is not None:
+            operario.id = id_encontrado
+            dados_operarios[id_encontrado]["centro"] = centro_op_detectado
+            dados_operarios[id_encontrado]["visto_por_ultimo"] = tempo_atual
+
+        else:
+            operario.id = proximo_id
+            dados_operarios[proximo_id] = {
+                "centro": centro_op_detectado,
+                "visto_por_ultimo": tempo_atual,
+                "ultimo_salvamento": 0
+            }
+            proximo_id += 1
+
+        ids_ja_usados_neste_frame.add(operario.id)
+
+        if dados_operarios[operario.id]["ultimo_salvamento"] == 0:
+            filtrar_salvamento(lista_operarios, frame)
+            dados_operarios[operario.id]["ultimo_salvamento"] = tempo_atual
+            print(dados_operarios)
+
+        elif abs(dados_operarios[operario.id]["ultimo_salvamento"] - tempo_atual) > 20:
+            filtrar_salvamento(lista_operarios, frame)
+            dados_operarios[operario.id]["ultimo_salvamento"] = tempo_atual
+            print(dados_operarios)
+
+        else:
+            continue
 
 def verificar_area_risco(box_risco, box_pessoa) -> bool:
     if not box_risco or not box_pessoa:
