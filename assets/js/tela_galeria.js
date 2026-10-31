@@ -68,6 +68,7 @@ function filtrarDados(dadosFoto) {
     // Abre o modal de detalhes ao clicar em qualquer parte do cartão.
     card.addEventListener("click", () => {
       mostrarDetalhesFoto(dado);
+      desenharCaixa(dado);
     });
 
     galeriaFotos.appendChild(card);
@@ -77,7 +78,7 @@ function filtrarDados(dadosFoto) {
 function mostrarDetalhesFoto(dado) {
   imagemAmpliada.src = `/foto/${dado.caminho_foto}`;
   fotoSelecionada = dado;
-
+  
   inserirDadosFoto(dado);
 }
 
@@ -181,6 +182,35 @@ function aplicarBarraConfianca(idValor, idBarra, valor) {
   } else {
     barra.classList.add("conf-baixa");
   }
+}
+
+function desenharCaixa(dado) {
+  
+  const caixa = dado.caixa_operario;
+  const canvas = document.getElementById("canvas-foto");
+  const ctx = canvas.getContext("2d");
+  const img = document.getElementById("foto-ampliada");
+
+  canvas.width = img.clientWidth;
+  canvas.height = img.clientHeight;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  if (!caixa) return;
+
+  const [x1, y1, x2, y2] = JSON.parse(caixa);
+
+  const escalaX = canvas.width / 720;
+  const escalaY = canvas.height / 480;
+
+  const x = x1 * escalaX;
+  const y = y1 * escalaY;
+  const largura = (x2 - x1) * escalaX;
+  const altura = (y2 - y1) * escalaY;
+
+  ctx.strokeStyle = "#ff0000";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, largura, altura);
 }
 
 botaoDeletar.addEventListener("click", () => {

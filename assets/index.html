@@ -171,7 +171,10 @@
 
     <!-- ================= MODAL DE DETALHES DA FOTO ================= -->
     <div id="mostrar-dados-imagem" style="display: none">
-      <img id="foto-ampliada" alt="Imagem ampliada" />
+      <div class="moldura-foto" style="position: relative; display: inline-block">
+        <img id="foto-ampliada" alt="Imagem ampliada"/>
+        <canvas id="canvas-foto" style="position: absolute; top: 0; left: 0; pointer-events: none;"></canvas>
+      </div>
       <button id="fechar-dados-imagem" class="botao botao-perigo botao-pequeno">
         <svg class="ic" aria-hidden="true"><use href="icones.svg#fechar" /></svg>
         Fechar
