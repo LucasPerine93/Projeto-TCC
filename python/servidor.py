@@ -1,8 +1,9 @@
 from arduino.app_bricks.web_ui import WebUI
+
 import banco
+import seguranca
 
 box_risco = None
-senha_acesso = 937389
 risco = False
 
 ui = WebUI()
@@ -24,8 +25,9 @@ def verificar_senha(cliente, data):
         para o cliente que a executou, evitando
         que outro usuario na tela de login tenha
         a interface desbloqueada """
-
-    if senha == senha_acesso: 
+    acesso = seguranca.validar_senha(senha)
+    
+    if acesso == True: 
         ui.send_message("liberado", {}, room=cliente)
 
     else:

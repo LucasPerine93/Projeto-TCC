@@ -1,0 +1,1 @@
+SENHA_SALVA = "senha_do_projeto"

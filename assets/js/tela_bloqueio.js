@@ -6,7 +6,7 @@ const botaoSenha = document.getElementById("enviar-senha");
 const mensagemErro = document.getElementById("mensagem-erro");
 
 botaoSenha.addEventListener("click", () => {
-  const senha = parseInt(campoSenha.value);
+  const senha = String(campoSenha.value);
 
   ui.send_message("senha", { senha });
   campoSenha.value = "";
