@@ -542,5 +542,6 @@ Os principais hiperparâmetros de visão computacional e persistência podem ser
 Projeto desenvolvido como Trabalho de Conclusão de Curso (**TCC**) por:
 
 - **Lucas Perine** ([GitHub](https://github.com/LucasPerine93))
+- **Victor Rodrigues** ([GitHub](https://github.com/victorvrf))
 
 **Foco da Pesquisa**: Aplicação prática de Inteligência Artificial, Edge Computing e Visão Computacional na mitigação de acidentes de trabalho e automação da fiscalização de conformidade em ambientes industriais de alto risco.
