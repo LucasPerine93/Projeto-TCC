@@ -1,7 +1,6 @@
 from fastapi.responses import FileResponse
 from collections import Counter
 import servidor
-import json
 import sqlite3
 import time
 import os
@@ -43,7 +42,6 @@ def inicializar_banco(caminho_banco: str) -> bool:
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
                 tipo_infracao TEXT NOT NULL,
-                caixa_operario TEXT NOT NULL,
                 posicao_x REAL,
                 posicao_y REAL,
                 conf_pessoa REAL NULL,
@@ -68,7 +66,13 @@ def inicializar_banco(caminho_banco: str) -> bool:
         if conexao:
             conexao.close()
 
-def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capacete, conf_colete, frame):
+def salvar_ocorrencias(tipo_infracao: str, dados_ocorrencia):
+    ( posicao_operario, 
+      conf_pessoa, 
+      conf_capacete, 
+      conf_colete, 
+      frame ) = dados_ocorrencia
+    
     if verificar_pendrive(CAMINHO_PENDRIVE) and inicializar_banco(CAMINHO_BANCO):
         nome_imagem = f"foto_{int(time.time())}_{tipo_infracao}_{posicao_operario}.jpg"
         caminho_salvar = os.path.join(PASTA_FOTOS, nome_imagem)
@@ -89,12 +93,18 @@ def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capace
             cursor = conexao.cursor()
     
             sql = """
-                    INSERT INTO ocorrencias (timestamp, tipo_infracao, caixa_operario, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO ocorrencias (timestamp, 
+                                             tipo_infracao, 
+                                             posicao_x, posicao_y, 
+                                             conf_pessoa, 
+                                             conf_capacete, 
+                                             conf_colete, 
+                                             caminho_foto)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                   """
     
             px, py = (posicao_operario[0] + posicao_operario[2]) / 2, (posicao_operario[1] + posicao_operario[3]) / 2
-            cursor.execute(sql, (time.strftime("%Y-%m-%dT%H:%M:%S"), tipo_infracao, json.dumps(posicao_operario), px, py, conf_pessoa, conf_capacete, conf_colete, caminho_salvar))
+            cursor.execute(sql, (time.strftime("%Y-%m-%dT%H:%M:%S"), tipo_infracao, px, py, conf_pessoa, conf_capacete, conf_colete, caminho_salvar))
     
             conexao.commit()
             
@@ -114,13 +124,13 @@ def salvar_ocorrencias(tipo_infracao, posicao_operario, conf_pessoa, conf_capace
 def pegar_foto(nome_foto: str):
     caminho_foto = os.path.join(PASTA_FOTOS, os.path.basename(nome_foto))
     if os.path.exists(caminho_foto):
-        return FileResponse(caminho_foto, media_type="image/jpeg") # Envia a foto pelo FastAPI
+        return FileResponse(caminho_foto, media_type="image/jpeg") # Envia a foto
         
     return "Foto não encontrada"
 
 def dados_ocorrencias():
-    registros = []
     conexao = None
+    registros = []
     try:
         conexao = sqlite3.connect(CAMINHO_BANCO)
 
@@ -132,7 +142,6 @@ def dados_ocorrencias():
         requisicao = "SELECT id, " \
                      "timestamp, " \
                      "tipo_infracao, " \
-                     "caixa_operario," \
                      "posicao_x, " \
                      "posicao_y, " \
                      "conf_pessoa, " \
@@ -140,13 +149,12 @@ def dados_ocorrencias():
                      "conf_colete, " \
                      "caminho_foto " \
                      "FROM ocorrencias " \
-                     "ORDER BY id DESC" 
+                     "ORDER BY id DESC"
         
         cursor.execute(requisicao)
 
         # Pega as linhas e converte para dicionarios 
         linhas = cursor.fetchall()
-        registros = []
         for linha in linhas:
             registros.append(dict(linha))
         
