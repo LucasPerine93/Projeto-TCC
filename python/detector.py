@@ -54,7 +54,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
             # Região do topo a 35% do corpo fica o capacete.
             if verificar_epi(box_capacete, operario.box_xyxy, (-0.15, 0.35)):
                 centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(operario.box_xyxy, box_capacete, 0.10) # Posiciona o centro na testa do operario
-                dist = calcular_distacia(centro_capacete, centro_cabeca_operario)
+                dist = math.dist(centro_capacete, centro_cabeca_operario)
                 if dist < menor_distancia:
                     menor_distancia = dist
                     melhor_operario = operario
@@ -73,7 +73,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
             # Região de 36% a 80% do corpo fica o colete.
             if verificar_epi(box_colete, operario.box_xyxy, (0.36, 0.80)):
                 centro_tronco_operario, centro_colete = calcular_centro_com_regiao(operario.box_xyxy, box_colete, 0.55)
-                dist = calcular_distacia(centro_colete, centro_tronco_operario)
+                dist = math.dist(centro_colete, centro_tronco_operario)
                 if dist < menor_distancia:
                     menor_distancia = dist
                     melhor_operario = operario
@@ -223,11 +223,7 @@ def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
     zona_topo = oy1 + local_corpo[0] * altura
     zona_base = oy1 + local_corpo[1] * altura
     return ox1 <= centro_x_epi <= ox2 and zona_topo <= centro_y_epi <= zona_base
-
-
-def calcular_distacia(posicao1, posicao2) -> float:
-    return math.dist(posicao1, posicao2)
-
+    
 
 def calcular_centro_com_regiao(box_operario, box_epi, regiao) -> tuple:
     ox1, oy1, ox2, oy2 = box_operario
