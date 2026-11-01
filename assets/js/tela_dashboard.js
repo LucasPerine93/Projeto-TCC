@@ -12,8 +12,11 @@ export async function carregarDashboard() {
 
   if (!resposta.ok) {
     console.error("Erro ao carregar dashboard:", `(HTTP ${resposta.status})`);
+
     document.getElementById("kpi-total").innerText = "--";
     document.getElementById("kpi-tipos").innerText = "--";
+    document.getElementById("kpi-comum").innerText = "--";
+    document.getElementById("kpi-ultima").innerText = "--";
     return;
   }
   let dados = await resposta.json();
@@ -24,23 +27,27 @@ export async function carregarDashboard() {
 }
 
 function atualizarKPIs(dados) {
-  document.getElementById("kpi-total").innerText = dados.total_observacoes;
-  document.getElementById("kpi-tipos").innerText = Object.keys(dados.resumo_conformidade,).length;
-
-  const tiposInfra = Object.keys(dados.resumo_conformidade);
-    if (tiposInfra.length > 0) {
-        const maisComum = tiposInfra.reduce((a, b) => dados.resumo_conformidade[a] >= dados.resumo_conformidade[b] ? a : b);
-
-        document.getElementById("kpi-comum").innerText = maisComum;
-        document.getElementById("kpi-comum").title = `${dados.resumo_conformidade[maisComum]} ocorrências`;
-
-  } else {
+  if (dados.total_observacoes === 0) {
+    document.getElementById("kpi-total").innerText = "--";
+    document.getElementById("kpi-tipos").innerText = "--";
     document.getElementById("kpi-comum").innerText = "--";
+    document.getElementById("kpi-ultima").innerText = "--";
+    return;
   }
 
+  const tiposInfra = Object.keys(dados.resumo_conformidade);
+  document.getElementById("kpi-total").innerText = dados.total_observacoes;
+  document.getElementById("kpi-tipos").innerText = tiposInfra.length;
+
+  tiposInfra.sort((a, b) => dados.resumo_conformidade[b] - dados.resumo_conformidade[a]);
+  const maisComum = tiposInfra[0];
+
+  document.getElementById("kpi-comum").innerText = maisComum;
+  document.getElementById("kpi-comum").title = `${dados.resumo_conformidade[maisComum]} ocorrências`;
+
   // Última ocorrência registrada (eventos_recentes vem ordenado por id DESC).
-  const ultima = dados.eventos_recentes?.[0];
-  document.getElementById("kpi-ultima").innerText = ultima?.timestamp ? formatarDataHora(ultima.timestamp): "--";
+  const ultima = dados.eventos_recentes[0];
+  document.getElementById("kpi-ultima").innerText = formatarDataHora(ultima.timestamp);
 }
 
 function renderizarGraficos(dados) {
@@ -98,9 +105,9 @@ function renderizarTabela(dados) {
     linha.innerHTML = `
       <td>${dataFormatada}</td>
       <td>${evento.tipo_infracao}</td>
-      <td>${evento.posicao_x?.toFixed(1) ?? "--"}</td>
-      <td>${evento.posicao_y?.toFixed(1) ?? "--"}</td>
-      <td>${evento.conf_pessoa?.toFixed(2) ?? "--"}</td>
+      <td>${evento.posicao_x.toFixed(1)}</td>
+      <td>${evento.posicao_y.toFixed(1)}</td>
+      <td>${evento.conf_pessoa.toFixed(2)}</td>
     `;
 
     corpoTabela.appendChild(linha);
