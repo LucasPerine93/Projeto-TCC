@@ -42,9 +42,9 @@ canvas.addEventListener("mousemove", (e) => {
 function renderizarRetangulo(x1, y1, x2, y2) {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  ctx.strokeStyle = "#00FF00";
+  ctx.strokeStyle = "#ff0000";
   ctx.lineWidth = 2;
-  ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
+  ctx.fillStyle = "rgba(255, 0, 0, 0.2)";
 
   ctx.fillRect(x1, y1, x2, y2);
   ctx.strokeRect(x1, y1, x2, y2);

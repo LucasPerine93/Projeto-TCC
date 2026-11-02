@@ -7,6 +7,7 @@ import time
 
 import servidor
 import banco
+import config
 
 camera = Camera(source=0, resolution=(720, 480), fps=10)
 deteccao = VideoObjectDetection(
@@ -15,7 +16,6 @@ deteccao = VideoObjectDetection(
     confidence=0.5,
     camera_preview=True,
 )
-
 
 @dataclass
 class Operario:
@@ -42,7 +42,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
     for dados_pessoa in pessoas_detectadas:
         novo_operario = Operario(
             box_xyxy_operario=dados_pessoa["bounding_box_xyxy"],
-            conf_pessoa=dados_pessoa.get("confidence")
+            conf_pessoa=dados_pessoa["confidence"]
         )
         lista_operarios.append(novo_operario)
 
@@ -54,8 +54,9 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
 
         for operario in lista_operarios:
             # Região do topo a 35% do corpo fica o capacete.
-            if verificar_epi(box_capacete, operario.box_xyxy_operario, (-0.15, 0.35)):
-                centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(operario.box_xyxy_operario, box_capacete, 0.10) # Posiciona o centro na testa do operario
+            if verificar_epi(box_capacete, operario.box_xyxy_operario, config.CABECA):
+                # Posiciona o centro na testa do operario
+                centro_cabeca_operario, centro_capacete = calcular_centro_com_regiao(operario.box_xyxy_operario, box_capacete, config.TESTA_OPERARIO)
                 dist = math.dist(centro_capacete, centro_cabeca_operario)
                 if dist < menor_distancia:
                     menor_distancia = dist
@@ -63,7 +64,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
 
         if melhor_operario is not None:
             melhor_operario.tem_capacete = True
-            melhor_operario.conf_capacete = dados_capacete.get("confidence")
+            melhor_operario.conf_capacete = dados_capacete["confidence"]
 
     coletes_detectados = specs_frame.get("vest", [])
     for dados_colete in coletes_detectados:
@@ -73,8 +74,9 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
 
         for operario in lista_operarios:
             # Região de 36% a 80% do corpo fica o colete.
-            if verificar_epi(box_colete, operario.box_xyxy_operario, (0.36, 0.80)):
-                centro_tronco_operario, centro_colete = calcular_centro_com_regiao(operario.box_xyxy_operario, box_colete, 0.55)
+            if verificar_epi(box_colete, operario.box_xyxy_operario, config.TRONCO):
+                # Posiciona o centro no tronco do operario
+                centro_tronco_operario, centro_colete = calcular_centro_com_regiao(operario.box_xyxy_operario, box_colete, config.PEITO)
                 dist = math.dist(centro_colete, centro_tronco_operario)
                 if dist < menor_distancia:
                     menor_distancia = dist
@@ -82,7 +84,7 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
 
         if melhor_operario is not None:
             melhor_operario.tem_colete = True
-            melhor_operario.conf_colete = dados_colete.get("confidence")
+            melhor_operario.conf_colete = dados_colete["confidence"]
 
     if area_risco_ativa == True:
         for operario in lista_operarios:
