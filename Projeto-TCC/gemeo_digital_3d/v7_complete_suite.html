@@ -1415,7 +1415,7 @@
       const ok = pct >= META, warn = !ok && pct >= 85;
       setAttr(card, 'data-state', ok ? 'ok' : warn ? 'warn' : 'bad');
       setText($('confVal'), f1(pct) + '%');
-      setText($('confStatus'), ok ? '✓ Dentro da meta' : '▼ Abaixo da meta (' + f1(pct - META) + ' p.p.)');
+      setText($('confStatus'), ok ? 'Dentro da meta' : 'Abaixo da meta (' + f1(pct - META) + ' p.p.)');
       $('confFill').style.width = pct.toFixed(1) + '%';
       setText($('confAux'), fmt(conformesPessoaFrames) + ' de ' + fmt(totalPessoaFrames) + ' pessoas-frame conformes · meta ' + META + '%');
     }
@@ -1555,7 +1555,7 @@
         [364, 430].forEach((cx) => { g.fillStyle = '#07110b'; g.beginPath(); g.arc(cx, y + 94, 37, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#3ccf7e'; g.lineWidth = 2; g.stroke(); });
         drawHelmet(g, 364, y + 94, 58); drawVest(g, 430, y + 94, 58);
         g.fillStyle = '#17803d'; g.fillRect(354, y + 132, 86, 24);
-        g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.font = '900 17px ' + mono; g.fillText('✓ OK', 397, y + 144);
+        g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.font = '900 17px ' + mono; g.fillText('OK', 397, y + 144);
         pointer('#3ccf7e', y + H - 2);
       } else if (state === 'lost') {
         const x = 36, y = 128, W = 440, H = 174;
@@ -1575,7 +1575,7 @@
         g.strokeStyle = '#020305'; g.lineWidth = 12; g.strokeRect(x + 5, y + 5, W - 10, H - 10);
         g.strokeStyle = blink ? '#facc15' : '#ef4444'; g.lineWidth = 8; g.strokeRect(x + 15, y + 15, W - 30, H - 30);
         g.fillStyle = '#b91c1c'; g.fillRect(x + 20, y + 20, W - 40, 52);
-        g.fillStyle = '#ffffff'; g.font = '900 25px ' + mono; g.fillText('⚠ ALERTA DE INFRAÇÃO', 256, y + 46);
+        g.fillStyle = '#ffffff'; g.font = '900 25px ' + mono; g.fillText('ALERTA DE INFRAÇÃO', 256, y + 46);
         g.fillStyle = '#ffe4e6'; g.font = '900 32px ' + mono; g.fillText(nm + '  ·  ID #' + id, 256, y + 100);
         const items = [];
         if (!w.temCapacete) items.push(['SEM CAPACETE', (c, cx, cy) => { drawHelmet(c, cx, cy, 72); slash(c, cx, cy, 76); }]);
