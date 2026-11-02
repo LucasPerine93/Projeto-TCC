@@ -332,9 +332,9 @@
   <div class="main">
     <aside id="side" class="side" aria-label="Painéis de controle">
       <div class="tabs" role="tablist" aria-label="Seções">
-        <button class="tab" id="tab-plan" role="tab" type="button" aria-selected="true" aria-controls="pane-plan" data-pane="plan">📐 Planta &amp; IA</button>
-        <button class="tab" id="tab-work" role="tab" type="button" aria-selected="false" aria-controls="pane-work" data-pane="work" tabindex="-1">👷 Operários <span class="badge" id="tabWCount">2</span></button>
-        <button class="tab" id="tab-log" role="tab" type="button" aria-selected="false" aria-controls="pane-log" data-pane="log" tabindex="-1">📜 Eventos <span class="badge" id="tabLCount">0</span></button>
+        <button class="tab" id="tab-plan" role="tab" type="button" aria-selected="true" aria-controls="pane-plan" data-pane="plan"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 21 9 15l3-3 6-6 3 3-6 6-3 3-6 3zM14 4l6 6M5 19l-2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Planta &amp; IA</span></button>
+        <button class="tab" id="tab-work" role="tab" type="button" aria-selected="false" aria-controls="pane-work" data-pane="work" tabindex="-1"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="7" r="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 21c.7-4 3-6 7-6s6.3 2 7 6M8 12H5m14 0h-3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Operários</span> <span class="badge" id="tabWCount">2</span></button>
+        <button class="tab" id="tab-log" role="tab" type="button" aria-selected="false" aria-controls="pane-log" data-pane="log" tabindex="-1"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg><span>Eventos</span> <span class="badge" id="tabLCount">0</span></button>
       </div>
 
       <div class="panes">
@@ -359,7 +359,7 @@
             <button class="btn" type="button" data-tool="erase" aria-pressed="false"><span class="sw sw-erase"></span>Borracha</button>
           </div>
           <div class="row">
-            <button id="upload" class="btn" type="button">📤 Carregar planta</button>
+            <button id="upload" class="btn" type="button"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0L7 9m5-5 5 5M5 20h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Carregar planta</span></button>
             <button id="sample" class="btn" type="button">Planta de exemplo</button>
             <button id="clear" class="btn" type="button">Limpar planta</button>
             <button id="scan360" class="btn" type="button"><svg width="16" height="16" viewBox="0 0 24 24"><path d="M21 21a1 1 0 0 1-.707-.293l-4-4a1 1 0 0 0-1.414 0l-4 4a1 1 0 0 1-1.414-1.414l4-4a1 1 0 0 1 1.414 1.414l-2.293 2.293a1 1 0 0 1-1.414 1.414L2.121 21.414A1 1 0 0 1 2.121 22a1 1 0 0 0 1.414 0l20-20a1 1 0 0 1 1.414 1.414zM3 12c0-5 5-9 9-9s9 5 9 9-5 9-9 9s-9-5-9-9z" fill="none" stroke="currentColor" stroke-width="2"/></svg> Scan 360°</button>
@@ -460,7 +460,7 @@
             <div class="ch ch-tip" id="cctvTip" hidden></div>
           </div>
           <div class="tools2">
-            <button id="paintBtn" class="btn paintb" type="button" aria-pressed="false">✏️ Pintar Risco pela Câmera</button>
+            <button id="paintBtn" class="btn paintb" type="button" aria-pressed="false"><svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 20 4.5-1 10-10a2.1 2.1 0 0 0-3-3l-10 10L4 20zm10.5-12.5 2 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Pintar Risco pela Câmera</span></button>
             <button id="eraseBtn" class="btn paintb" type="button" aria-pressed="false" disabled>Borracha</button>
             <button id="calibBtn" class="btn paintb calibb" type="button" aria-pressed="false"><svg width="16" height="16" viewBox="0 0 24 24" style="vertical-align:middle;margin-right:6px"><circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1" fill="currentColor"/></svg> Calibrar Homografia (4 pts)</button>
           </div>
@@ -1463,7 +1463,7 @@
       if (!workers.some((w) => w.active)) {
         setBanner('idle', 'Nenhuma área navegável encontrada na planta', 'Abra passagens entre as paredes ou carregue outra planta.');
       } else if (bad.length) {
-        setBanner('alert', '⚠️ ALERTA CRÍTICO: ' + bad.map(describe).join(' · ') + '!',
+        setBanner('alert', 'ALERTA CRÍTICO: ' + bad.map(describe).join(' · ') + '!',
           bad.map((w) => w.name + ' em X ' + f1(w.tx) + ' · Z ' + f1(w.tz) + ' m').join('   |   '));
       } else {
         setBanner('ok', 'Monitoramento ativo. Nenhuma infração de EPI ou de área de risco.', fmt(riskCount) + ' células de risco vigiadas em ' + f1(riskCount * CELL * CELL) + ' m².');
@@ -2032,7 +2032,7 @@
     $('toggleHeat').addEventListener('click', (e) => {
       heatOn = !heatOn; heatMesh.visible = heatOn;
       e.currentTarget.setAttribute('aria-pressed', String(heatOn));
-      e.currentTarget.textContent = '🔥 Mapa de Calor: ' + (heatOn ? 'ON' : 'OFF');
+      e.currentTarget.innerHTML = '<svg class="ic" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21c4.4 0 8-2.7 8-7 0-3.1-2-5.3-4.1-7.2.1 2.4-1.1 3.8-2.5 4.7.2-3.7-1.7-7.1-5.1-9.5.4 3.1-.6 5.2-2 7.1C5.1 10.7 4 12.2 4 14c0 4.3 3.6 7 8 7z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg><span>Mapa de Calor: ' + (heatOn ? 'ON' : 'OFF') + '</span>';
       if (heatOn) drawHeat();
     });
     $('clearHeat').addEventListener('click', () => { heatGrid.fill(0); heatDirty = false; drawHeat(); logEvent('Histórico do mapa de calor zerado.'); });
@@ -2226,7 +2226,7 @@
     const setStatus = (txt, k) => { wsStatus.textContent = txt; wsStatus.dataset.k = k || ''; };
     function setModeLabel() {
       wsBtn.dataset.mode = liveMode ? 'live' : 'sim';
-      wsBtn.querySelector('.mode-dot').textContent = liveMode ? '📡' : '🟢';
+      wsBtn.querySelector('.mode-dot').innerHTML = liveMode ? '<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 0 1 16 0M7 13a5 5 0 0 1 10 0M10 16a2 2 0 0 1 4 0" fill="none" stroke="var(--ok)" stroke-width="2" stroke-linecap="round"/></svg>' : '<svg width="10" height="10" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="var(--ok)"/></svg>';
       $('wsLabel').innerHTML = '<span class="mt-long">Modo: </span>' + (liveMode ? 'Arduino Live (WS)' : 'Simulação IA');
     }
     function openPanel(open) {
