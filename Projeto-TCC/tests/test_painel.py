@@ -13,7 +13,10 @@ from datetime import datetime, timedelta
 from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "python")))
-import test_pipeline  # noqa: F401  (instala os stubs arduino/fastapi e importa detector antes de banco)
+try:
+    import test_pipeline  # noqa: F401  (instala os stubs arduino/fastapi e importa detector antes de banco)
+except ModuleNotFoundError:   # pytest a partir da raiz do projeto: tests/ é um pacote
+    from tests import test_pipeline  # noqa: F401
 import detector
 import banco
 import amostragem

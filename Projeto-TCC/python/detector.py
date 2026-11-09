@@ -548,6 +548,10 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
         if (agora - _ultima_ocorrencia[chave]) > (TEMPO_ESPERA_SALVAR * 3):
             del _ultima_ocorrencia[chave]
 
+    # Envia telemetria a ~5 Hz (minimo 0.2s entre envios)
+    operario_ids = [o.track_id for o in lista_de_operarios if o.track_id is not None]
+    servidor.enviar_telemetria(operario_ids)
+
 
 # ---------------------------------------------------------------------------
 # Geometria
@@ -558,9 +562,10 @@ def verificar_area_risco(box_risco, box_pessoa) -> bool:
 
     px1, py1, px2, py2 = box_pessoa
     rx1, ry1, rx2, ry2 = box_risco
-    centro_x = (px1 + px2) / 2
-    centro_y = (py1 + py2) / 2
-    return rx1 <= centro_x <= rx2 and ry1 <= centro_y <= ry2
+    # Ponto de contato com o piso: centro horizontal da caixa, base vertical (y2)
+    px_base = (px1 + px2) / 2
+    py_base = py2
+    return rx1 <= px_base <= rx2 and ry1 <= py_base <= ry2
 
 
 def verificar_epi(box_epi, box_operario, local_corpo) -> bool:

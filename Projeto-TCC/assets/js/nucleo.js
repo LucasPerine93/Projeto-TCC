@@ -4,7 +4,7 @@ import { el, icone } from "./util.js";
 export const estado = { tela: null, autenticado: false };
 
 const telas = new Map();
-const TITULOS = { "ao-vivo": "Ao vivo", ocorrencias: "Ocorrências", painel: "Painel" };
+const TITULOS = { "ao-vivo": "Ao vivo", ocorrencias: "Ocorrências", painel: "Painel", gemeo: "Gêmeo 3D" };
 
 export function registrarTela(nome, { entrar } = {}) {
   telas.set(nome, { entrar });
@@ -25,6 +25,7 @@ export function irPara(nome, { historico = true, foco = true } = {}) {
     if (botao.dataset.tela === nome) botao.setAttribute("aria-current", "page");
     else botao.removeAttribute("aria-current");
   });
+  document.body.dataset.tela = nome;
   document.title = `${TITULOS[nome] ?? "Painel"} · Painel de EPIs`;
 
   if (historico && telaDoHash() !== nome) history.pushState(null, "", `#/${nome}`);

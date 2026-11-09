@@ -38,3 +38,13 @@ flowchart LR
 `index.html` + ES modules em `js/` (`app`, `nucleo`, `tela_*`, `grafico` SVG puro,
 `util`, `api`, `conexao_ui` = `new WebUI()`). Libs: `socket.io.min.js`,
 `arduino.js`. O `chart.umd.min.js` foi removido (órfão após migração p/ SVG).
+
+### Gêmeo Digital 3D e assistente (v. `feat/gemeo-3d-evolucao`)
+
+Quarta aba "Gêmeo 3D": `js/tela_gemeo.js` carrega sob demanda `libs/three.min.js` (local),
+`js/gemeo/fonte_dados.js` (adaptador/normalizador de dados), `js/gemeo/motor.js` (cena 3D) e
+`js/gemeo/interface.js`. A origem dos dados é sempre exibida (SIMULAÇÃO, DADOS REAIS ou SEM DADOS
+REAIS). O painel `Assistente` (`js/assistente.js`) é só a estrutura visual, sem modelo conectado.
+Detalhes, formato de mensagens e roteiro em `PLANO_EVOLUCAO.md`. Observação: este documento cita
+`config.py`, que não existe na branch `develop` (as constantes estão em `detector.py`).
+

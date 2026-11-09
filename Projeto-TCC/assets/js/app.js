@@ -5,6 +5,8 @@ import { iniciarAcesso, sair } from "./tela_bloqueio.js";
 import { iniciarAoVivo, pararAoVivo } from "./tela_ao_vivo.js";
 import { iniciarOcorrencias, pararOcorrencias } from "./tela_ocorrencias.js";
 import "./tela_painel.js";
+import { pararGemeo } from "./tela_gemeo.js";
+import "./assistente.js";
 
 document.querySelectorAll("#abas [data-tela]").forEach((b) =>
   b.addEventListener("click", () => irPara(b.dataset.tela)));
@@ -17,5 +19,5 @@ iniciarAcesso({
     iniciarOcorrencias();
     irPara(telaDoHash() || "ao-vivo", { historico: false });
   },
-  saiu: () => { pararAoVivo(); pararOcorrencias(); },
+  saiu: () => { pararAoVivo(); pararOcorrencias(); pararGemeo(); },
 });

@@ -17,6 +17,7 @@
     <meta name="msapplication-TileImage" content="icon-32.png" />
 
     <link rel="stylesheet" href="css/style.css" />
+    <link rel="stylesheet" href="css/gemeo.css" />
   </head>
   <body>
     <!-- Ícones: ficam em icones.svg e são usados via
@@ -63,6 +64,10 @@
               <svg class="ic" aria-hidden="true"><use href="icones.svg#painel" /></svg>
               <span>Painel</span>
             </button>
+            <button type="button" data-tela="gemeo">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#cubo" /></svg>
+              <span>Gêmeo 3D</span>
+            </button>
           </nav>
 
           <div class="estado" role="status" aria-label="Estado do sistema">
@@ -72,6 +77,10 @@
           </div>
 
           <div class="topo-acoes">
+            <button id="botao-ia" class="btn" type="button" aria-expanded="false" aria-controls="painel-ia">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#assistente" /></svg>
+              <span>Assistente</span>
+            </button>
             <button id="botao-tema" class="btn btn-icone" type="button" aria-label="Usar tema escuro" aria-pressed="false">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#lua" /></svg>
             </button>
@@ -231,7 +240,235 @@
             </section>
           </div>
         </section>
+        <section class="tela tela-gemeo" data-tela="gemeo" aria-labelledby="t-gemeo" hidden>
+          <h1 id="t-gemeo" class="g-vh">Gêmeo digital 3D</h1>
+
+          <div class="g-barra">
+            <button id="sideToggle" class="btn btn-icone btn-pequeno" type="button" aria-label="Mostrar ou ocultar o painel lateral" aria-expanded="true" title="Painel lateral">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#lateral" /></svg>
+            </button>
+
+            <div id="banner" class="g-banner" data-state="idle" role="status" aria-live="assertive">
+              <span class="lamp" aria-hidden="true"></span>
+              <div class="msg">
+                <span id="bannerTitle" class="title">Aguardando leitura da planta</span>
+                <span id="bannerSub" class="bn-sub">Processe a planta para iniciar o monitoramento.</span>
+              </div>
+            </div>
+
+            <div class="g-kpis">
+              <button id="wsToggle" class="btn btn-pequeno g-modo" type="button" data-mode="sim" aria-expanded="false" aria-controls="wsPanel" title="Origem dos dados exibidos: simulação (fictícia) ou dados reais do Arduino">
+                <b class="g-dot" aria-hidden="true"></b><span id="wsLabel"><span class="mt-long">Fonte: </span>SIMULAÇÃO</span>
+              </button>
+              <div id="confCard" class="g-kpi k-conf" data-state="none" title="Conformidade Pessoa-Frame">
+                <span class="k-lbl">Conformidade Pessoa-Frame</span>
+                <b id="confVal" class="k-val">—</b>
+                <span id="confStatus" class="k-sub">Aguardando amostras</span>
+                <div class="g-cbar" aria-hidden="true"><i id="confFill"></i><b class="cmeta"></b></div>
+                <span id="confAux" class="g-vh">Meta do TCC: 95%</span>
+                <button id="confReset" class="btn btn-pequeno g-mini" type="button" title="Zerar a contagem acumulada">Zerar</button>
+              </div>
+              <div class="g-kpi k-meta"><span class="k-lbl">Meta</span><b class="k-val">95%</b></div>
+              <div class="g-kpi k-estrutura"><span class="k-lbl">Estrutura</span><b id="wallCount" class="k-val">0</b><span class="k-lbl">vigas</span></div>
+            </div>
+          </div>
+
+          <div id="wsPanel" class="g-ws cartao" role="dialog" aria-label="Fonte dos dados do gêmeo digital" hidden>
+            <h2 class="g-ws-tit">Fonte dos dados</h2>
+            <button id="wsPainel" class="btn btn-primario btn-largo" type="button">
+              <svg class="ic" aria-hidden="true"><use href="icones.svg#radar" /></svg><span>Dados reais do Arduino (conexão do painel)</span>
+            </button>
+            <p class="sub g-ws-dica">Usa o mesmo socket do painel. O backend precisa enviar a mensagem <code>telemetria_gemeo</code> (ainda não implementada; veja PLANO_EVOLUCAO.md).</p>
+            <details class="g-ws-avancado">
+              <summary>Avançado: WebSocket externo / servidor de testes</summary>
+              <label for="wsUrl">Endereço do WebSocket</label>
+              <input id="wsUrl" type="text" value="ws://localhost:8000/ws" list="wsUrls" spellcheck="false" autocomplete="off" />
+              <datalist id="wsUrls"><option value="ws://localhost:8000/ws"></option><option value="ws://localhost:5000/ws"></option></datalist>
+              <button id="wsConnect" class="btn btn-largo" type="button">Conectar ao WebSocket</button>
+            </details>
+            <div class="g-ws-linha">
+              <button id="wsSim" class="btn" type="button" hidden>Voltar à simulação</button>
+              <button id="wsCancel" class="btn" type="button">Fechar</button>
+            </div>
+            <p id="wsStatus" class="sub g-ws-estado" role="status"></p>
+          </div>
+
+          <div id="shell" class="g-area" data-side="open">
+            <aside id="side" class="g-lado cartao" aria-label="Painéis do gêmeo digital">
+              <div class="g-abas seg" role="tablist" aria-label="Seções do gêmeo">
+                <button class="tab" id="tab-plan" role="tab" type="button" aria-selected="true" aria-controls="pane-plan" data-pane="plan">
+                  <svg class="ic" aria-hidden="true"><use href="icones.svg#planta" /></svg><span>Planta e IA</span>
+                </button>
+                <button class="tab" id="tab-work" role="tab" type="button" aria-selected="false" aria-controls="pane-work" data-pane="work" tabindex="-1">
+                  <svg class="ic" aria-hidden="true"><use href="icones.svg#pessoas" /></svg><span>Operários</span><span class="selo g-selo" id="tabWCount">2</span>
+                </button>
+                <button class="tab" id="tab-log" role="tab" type="button" aria-selected="false" aria-controls="pane-log" data-pane="log" tabindex="-1">
+                  <svg class="ic" aria-hidden="true"><use href="icones.svg#lista" /></svg><span>Eventos</span><span class="selo g-selo" id="tabLCount">0</span>
+                </button>
+              </div>
+
+              <div class="g-paineis">
+                <section id="pane-plan" class="pane" role="tabpanel" aria-labelledby="tab-plan">
+                  <div class="g-cab"><h2>Planta baixa 2D</h2><span class="sub">320 × 240 px · 0,5 m</span></div>
+                  <div class="canvas-wrap">
+                    <canvas id="plan" width="320" height="240" aria-label="Planta baixa editável. Desenhe com o mouse ou o dedo."></canvas>
+                    <canvas id="overlay" width="320" height="240" aria-hidden="true"></canvas>
+                    <canvas id="camLayer" width="640" height="480" aria-hidden="true"></canvas>
+                  </div>
+                  <p class="note">
+                    <span id="planNote">Fonte: planta de exemplo</span>
+                    <span>
+                      <span class="key"><i class="g-sw" style="background:#5aa9e6"></i>parede</span>
+                      <span class="key"><i class="g-sw" style="background:#38bdf8"></i>portal</span>
+                      <span class="key"><i class="g-sw" style="background:#f2b705"></i>risco</span>
+                    </span>
+                  </p>
+                  <div class="tools" role="group" aria-label="Ferramentas de desenho">
+                    <button class="btn" type="button" data-tool="wall" aria-pressed="true"><span class="sw sw-wall"></span>Parede</button>
+                    <button class="btn" type="button" data-tool="risk" aria-pressed="false"><span class="sw sw-risk"></span>Risco</button>
+                    <button class="btn" type="button" data-tool="erase" aria-pressed="false"><span class="sw sw-erase"></span>Borracha</button>
+                  </div>
+                  <div class="row">
+                    <button id="upload" class="btn" type="button"><svg class="ic" aria-hidden="true"><use href="icones.svg#enviar" /></svg><span>Carregar planta</span></button>
+                    <button id="sample" class="btn" type="button">Planta de exemplo</button>
+                    <button id="clear" class="btn" type="button">Limpar planta</button>
+                    <button id="scan360" class="btn" type="button"><svg class="ic" aria-hidden="true"><use href="icones.svg#radar" /></svg><span>Scan 360°</span></button>
+                  </div>
+                  <input id="file" type="file" accept="image/*" hidden />
+                  <button id="process" class="btn btn-primario btn-largo" type="button">Processar visão e extrudar 3D</button>
+                  <div class="mini-stats">
+                    <div class="ms walls"><div class="lbl">Estrutura 3D</div><div id="wallCountM" class="val">0</div><div id="wallAux" class="aux">&nbsp;</div></div>
+                    <div class="ms risk"><div class="lbl">Zonas de risco</div><div id="riskCount" class="val">0</div><div id="riskAux" class="aux">&nbsp;</div></div>
+                  </div>
+                  <details class="adv-settings">
+                    <summary><svg class="ic" aria-hidden="true"><use href="icones.svg#ajustes" /></svg><span>Parâmetros avançados de visão</span></summary>
+                    <div class="adv-body">
+                      <div class="slider">
+                        <label for="size"><span>Espessura do pincel</span><output id="sizeOut" for="size">8 px</output></label>
+                        <input id="size" type="range" min="2" max="24" step="1" value="8" />
+                      </div>
+                      <div class="slider">
+                        <label for="thickFilter"><span>Filtro de espessura (limpa móveis e textos)</span><output id="thickFilterOut" for="thickFilter">2</output></label>
+                        <input id="thickFilter" type="range" min="0" max="4" step="1" value="2" />
+                      </div>
+                      <div class="toggles">
+                        <label for="auto"><input id="auto" type="checkbox" checked />Reprocessar ao soltar o mouse</label>
+                        <label for="showGrid"><input id="showGrid" type="checkbox" checked />Mostrar malha estrutural e portais sobre a planta</label>
+                        <label for="adapt"><input id="adapt" type="checkbox" checked />Filtro anti-sombra (limiar adaptativo para fotos)</label>
+                        <label for="blind"><input id="blind" type="checkbox" checked />Simular ponto cego realista (só rastrear no campo de visão das câmeras)</label>
+                      </div>
+                    </div>
+                  </details>
+                </section>
+
+                <section id="pane-work" class="pane" role="tabpanel" aria-labelledby="tab-work" hidden>
+                  <div class="g-cab"><h2>Operários</h2><span class="sub">simulação de EPI e rota</span></div>
+                  <div id="sumCard" class="sum" data-state="none">
+                    <div class="lbl">Conformidade (Pessoa-Frame)</div>
+                    <div class="big"><span id="sumVal" class="val">—</span><span id="sumStatus" class="st">Aguardando amostras</span></div>
+                    <div class="g-cbar" aria-hidden="true"><i id="sumFill"></i><b class="cmeta"></b></div>
+                    <div id="sumAux" class="aux">Meta do TCC: 95%</div>
+                  </div>
+                  <div id="workers" class="workers" aria-label="Estado dos operários"></div>
+                </section>
+
+                <section id="pane-log" class="pane" role="tabpanel" aria-labelledby="tab-log" hidden>
+                  <div class="g-cab"><h2>Eventos</h2><span class="sub"><span id="evTotal">0</span> nesta sessão</span></div>
+                  <ul id="log" class="g-log"><li class="empty">Nenhum evento registrado ainda.</li></ul>
+                </section>
+              </div>
+            </aside>
+
+            <div id="stage" class="g-palco">
+              <div id="viewer" class="viewer"></div>
+
+              <div class="ov-tl">
+                <div id="fonteMarca" class="g-marca" data-modo="sim" role="status"></div>
+                <div class="hud glass">arraste: girar · scroll ou pinça: zoom</div>
+                <details class="legend-pop glass">
+                  <summary>Legenda</summary>
+                  <div class="items">
+                    <span><i class="g-sw" style="background:#d0dae5"></i>alvenaria</span>
+                    <span><i class="g-sw" style="background:#f2b705"></i>portal / batente</span>
+                    <span><i class="g-sw" style="background:#ef4444"></i>zona de risco zebrada</span>
+                    <span><i class="g-sw" style="background:#3ccf7e"></i>totem conforme</span>
+                    <span><i class="g-sw" style="background:#ef4444"></i>totem em infração</span>
+                    <span><i class="g-sw" style="background:#8a96a3"></i>sinal perdido</span>
+                    <span><i class="g-sw" style="background:linear-gradient(90deg,#2563eb,#22d3ee,#facc15,#ef4444);width:22px"></i>mapa de calor (infrações)</span>
+                    <span><i class="g-sw" style="background:#b6ff3b"></i>quadrilátero calibrado</span>
+                  </div>
+                </details>
+              </div>
+
+              <div class="ov-tr">
+                <button id="toggleRoof" class="btn btn-pequeno glass" type="button" aria-pressed="true">Treliças e iluminação: ligadas</button>
+                <button id="toggleHeat" class="btn btn-pequeno glass" type="button" aria-pressed="false">Mapa de calor: desligado</button>
+                <button id="clearHeat" class="btn btn-pequeno glass quiet" type="button" title="Zerar o histórico de calor">Limpar calor</button>
+                <button id="resetCam" class="btn btn-pequeno glass" type="button">Recentralizar</button>
+              </div>
+
+              <div id="camselA" class="camsel dock glass" role="group" aria-label="Seletor de câmeras de segurança"><span class="cs-lbl">Câmeras · 1 2 3</span></div>
+
+              <section id="pip" class="pip glass" data-size="mid" aria-label="Monitor CCTV">
+                <header class="pip-head">
+                  <span class="pip-dot" aria-hidden="true"></span><b>CCTV</b><span id="cctvTag" class="tag">CAM 1A</span>
+                  <div class="pip-btns" role="group" aria-label="Tamanho do monitor">
+                    <button id="pipMin" type="button" title="Minimizar" aria-label="Minimizar monitor">_</button>
+                    <button id="pipMid" type="button" title="Tamanho médio" aria-label="Tamanho médio">▭</button>
+                    <button id="pipMax" type="button" title="Modo teatro (Esc para sair)" aria-label="Modo teatro">[ ]</button>
+                  </div>
+                </header>
+                <div class="pip-body">
+                  <div id="camselB" class="camsel" role="group" aria-label="Seletor de câmeras no monitor"><span class="cs-lbl">Câmera ativa</span></div>
+                  <div id="cctvScreen" class="cctv-screen">
+                    <canvas id="cctvView" width="640" height="480" aria-hidden="true"></canvas>
+                    <canvas id="cctvBoxes" width="640" height="480" role="img" aria-label="Vista virtual do gêmeo digital com as caixas de detecção desenhadas sobre os operários"></canvas>
+                    <div class="ch ch-tl"><i class="rec"></i><span class="recw" id="cctvRec">VIRTUAL</span><b id="cctvCam">CAM 1A</b></div>
+                    <div class="ch ch-tr" id="cctvClock"></div>
+                    <div class="ch ch-lock" id="cctvLock" hidden></div>
+                    <div class="ch ch-bl" id="cctvSector">Corredor Central</div>
+                    <div class="ch ch-br" id="cctvOrigem">VISTA VIRTUAL · detecções simuladas</div>
+                    <div class="ch ch-tip" id="cctvTip" hidden></div>
+                  </div>
+                  <div class="tools2">
+                    <button id="paintBtn" class="btn btn-pequeno paintb" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="icones.svg#lapis" /></svg><span>Pintar risco pela câmera</span></button>
+                    <button id="eraseBtn" class="btn btn-pequeno paintb" type="button" aria-pressed="false" disabled>Borracha</button>
+                    <button id="calibBtn" class="btn btn-pequeno paintb calibb" type="button" aria-pressed="false"><svg class="ic" aria-hidden="true"><use href="icones.svg#alvo" /></svg><span>Calibrar homografia (4 pts)</span></button>
+                  </div>
+                  <ul id="cctvList" class="det" aria-label="Operários na imagem da câmera"></ul>
+                  <p class="note"><span>Projeção homográfica 3D↔2D com oclusão por parede e leitura de marcador ArUco 5×5.</span></p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </section>
       </main>
+
+      <!-- ============ ASSISTENTE DE IA (estrutura visual; NÃO está conectado a nenhum modelo) ============ -->
+      <aside id="painel-ia" class="ia" aria-labelledby="ia-titulo" hidden>
+        <div class="ia-cab">
+          <h2 id="ia-titulo">Assistente de IA</h2>
+          <span class="chip" data-estado="atencao"><b aria-hidden="true"></b><span>Não conectado</span></span>
+          <button id="ia-fechar" class="btn btn-icone btn-pequeno" type="button" aria-label="Fechar o assistente">
+            <svg class="ic" aria-hidden="true"><use href="icones.svg#x" /></svg>
+          </button>
+        </div>
+        <div class="ia-corpo">
+          <p><strong>Este recurso ainda não funciona.</strong> Nenhum modelo de IA está ligado ao painel e nenhuma resposta é gerada aqui.</p>
+          <p class="sub">Quando for conectado, o assistente só poderá <em>consultar</em> ocorrências e indicadores deste sistema. Ele não poderá alterar regras de segurança, a área de risco nem controlar equipamentos, e imagens ou dados pessoais não serão enviados a serviços externos sem sua ação.</p>
+          <h3>Exemplos do que está previsto (ainda indisponível)</h3>
+          <ul class="ia-exemplos">
+            <li>Quais foram as ocorrências mais frequentes nesta semana?</li>
+            <li>Qual zona apresentou mais eventos?</li>
+            <li>Compare o período atual com o anterior.</li>
+          </ul>
+        </div>
+        <form class="ia-form" aria-label="Pergunta ao assistente (desativado)" onsubmit="return false">
+          <label for="ia-entrada" class="g-vh">Pergunta ao assistente</label>
+          <textarea id="ia-entrada" rows="2" placeholder="Indisponível: o assistente ainda não está conectado" disabled></textarea>
+          <button class="btn btn-primario" type="submit" disabled>Enviar</button>
+        </form>
+      </aside>
     </div>
 
     <!-- ================= DETALHES DA OCORRÊNCIA ================= -->

@@ -1,3 +1,4 @@
+import time
 from fastapi import Request
 from arduino.app_bricks.web_ui import WebUI
 import banco
@@ -20,6 +21,16 @@ def limpar_box_risco(*args):
 
 def enviar_log(mensagem):
     ui.send_message("log_deteccao", mensagem)
+
+_ui_telemetria_ultimo = 0.0
+
+def enviar_telemetria(operarios):
+    global _ui_telemetria_ultimo
+    agora = time.time()
+    if agora - _ui_telemetria_ultimo < 0.2:
+        return  # controle de taxa: min 0.2s entre envios
+    _ui_telemetria_ultimo = agora
+    ui.send_message("telemetria_gemeo", {"operarios": operarios})
 
 ui.on_message('area_marcada', calcular_area)
 ui.on_message("limpar_box_risco", limpar_box_risco)

@@ -51,8 +51,9 @@ def _instalar_stubs():
     try:
         import fastapi.responses  # noqa: F401
     except ImportError:
-        mod("fastapi")
-        mod("fastapi.responses", FileResponse=object)
+        # servidor.py e seguranca.py importam Request; seguranca.py importa JSONResponse
+        mod("fastapi", Request=object)
+        mod("fastapi.responses", FileResponse=object, JSONResponse=object)
 
 
 _instalar_stubs()
