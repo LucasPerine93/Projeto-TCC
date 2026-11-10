@@ -48,6 +48,7 @@ export function definirChip(id, situacao, texto) {
   if (!chip) return;
   chip.dataset.estado = situacao;
   chip.querySelector("span").textContent = texto;
+  chip.title = texto;               // na faixa de ícones o texto some; o tooltip e o leitor de tela mantêm a informação
 }
 
 /** Aviso temporário. `acao` = { rotulo, aoClicar } (por exemplo "Desfazer"). */

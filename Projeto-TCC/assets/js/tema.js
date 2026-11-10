@@ -11,7 +11,7 @@ function aplicar(tema) {
   botao.querySelector("use").setAttribute("href", `icones.svg#${escuro ? "sol" : "lua"}`);
 }
 
-aplicar(lerPreferencia("tema", "claro") === "escuro" ? "escuro" : "claro");
+aplicar(lerPreferencia("tema", "escuro") === "claro" ? "claro" : "escuro");
 
 botao.addEventListener("click", () => {
   const proximo = document.documentElement.dataset.tema === "escuro" ? "claro" : "escuro";

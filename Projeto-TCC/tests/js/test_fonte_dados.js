@@ -1,6 +1,9 @@
 // Testes da camada de adaptação de dados do Gêmeo 3D. Executar: node tests/js/test_fonte_dados.js
 const assert = require('assert');
-const F = require('../../assets/js/gemeo/fonte_dados.js');
+const modulo = require('../../assets/js/gemeo/fonte_dados.js');
+// O adaptador é UMD: em uma árvore marcada como ESM ele publica a API no global,
+// enquanto no CommonJS puro usa module.exports. Os testes aceitam os dois contextos.
+const F = modulo.normalizarMensagem ? modulo : globalThis.GemeoFonte;
 let n = 0; const t = (nome, fn) => { fn(); n++; console.log('ok -', nome); };
 
 t('formato plano da v7', () => {

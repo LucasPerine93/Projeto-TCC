@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pt-br" data-tema="claro">
+<html lang="pt-br" data-tema="escuro">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,12 +12,13 @@
     <link rel="icon" type="image/png" sizes="16x16" href="icon-16.png" />
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png" />
     <link rel="manifest" href="manifest.json" />
-    <meta name="theme-color" content="#1550c8" />
-    <meta name="msapplication-TileColor" content="#1550c8" />
+    <meta name="theme-color" content="#060b14" />
+    <meta name="msapplication-TileColor" content="#060b14" />
     <meta name="msapplication-TileImage" content="icon-32.png" />
 
     <link rel="stylesheet" href="css/style.css" />
     <link rel="stylesheet" href="css/gemeo.css" />
+    <link rel="stylesheet" href="css/command-center.css" />
   </head>
   <body>
     <!-- Ícones: ficam em icones.svg e são usados via
@@ -47,24 +48,24 @@
         <div class="topo-faixa">
           <div class="marca">
             <svg class="ic" aria-hidden="true"><use href="icones.svg#escudo" /></svg>
-            <span>Painel de EPIs</span>
+            <span class="marca-texto"><b>Painel de EPIs</b><small>Safety Monitoring</small></span>
           </div>
 
           <nav id="abas" aria-label="Seções">
-            <button type="button" data-tela="ao-vivo">
+            <button type="button" data-tela="ao-vivo" title="Monitoramento ao vivo">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>
               <span>Ao vivo</span>
             </button>
-            <button type="button" data-tela="ocorrencias">
+            <button type="button" data-tela="ocorrencias" title="Ocorrências">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#lista" /></svg>
               <span>Ocorrências</span>
               <span id="selo-pendentes" class="selo" hidden></span>
             </button>
-            <button type="button" data-tela="painel">
+            <button type="button" data-tela="painel" title="Dashboard analítico">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#painel" /></svg>
               <span>Painel</span>
             </button>
-            <button type="button" data-tela="gemeo">
+            <button type="button" data-tela="gemeo" title="Gêmeo digital 3D">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#cubo" /></svg>
               <span>Gêmeo 3D</span>
             </button>
@@ -77,14 +78,14 @@
           </div>
 
           <div class="topo-acoes">
-            <button id="botao-ia" class="btn" type="button" aria-expanded="false" aria-controls="painel-ia">
+            <button id="botao-ia" class="btn" type="button" title="Assistente de IA (não conectado)" aria-expanded="false" aria-controls="painel-ia">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#assistente" /></svg>
               <span>Assistente</span>
             </button>
             <button id="botao-tema" class="btn btn-icone" type="button" aria-label="Usar tema escuro" aria-pressed="false">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#lua" /></svg>
             </button>
-            <button id="botao-sair" class="btn" type="button">
+            <button id="botao-sair" class="btn" type="button" title="Sair">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#sair" /></svg>
               <span>Sair</span>
             </button>
@@ -102,8 +103,19 @@
             </div>
           </div>
 
+          <div class="vivo-kpis" aria-label="Resumo desta sessão">
+            <div class="kpi"><span class="kpi-rot">Eventos na sessão</span><b class="kpi-val" id="kpi-eventos">0</b><span class="kpi-sub">recebidos desde que a tela abriu</span></div>
+            <div class="kpi" id="kpi-alertas-cartao"><span class="kpi-rot">Alertas na sessão</span><b class="kpi-val" id="kpi-alertas">0</b><span class="kpi-sub">infrações e riscos</span></div>
+            <div class="kpi"><span class="kpi-rot">Último alerta</span><b class="kpi-val menor" id="kpi-ultimo">—</b><span class="kpi-sub" id="kpi-ultimo-sub">nenhum ainda</span></div>
+          </div>
+
           <div class="vivo-grade">
             <div class="vivo-video">
+              <div class="camera-cab">
+                <span class="camera-nome"><svg class="ic" aria-hidden="true"><use href="icones.svg#camera" /></svg>Câmera 01</span>
+                <span class="chip" id="cam-estado" data-estado="neutro" role="status"><b aria-hidden="true"></b><span>Conectando…</span></span>
+                <span class="camera-res" title="Resolução configurada no detector">720 × 480</span>
+              </div>
               <div class="quadro-video" id="quadro-video">
                 <iframe id="video" title="Transmissão da câmera"></iframe>
                 <div class="camera-vazia" id="camera-placeholder">
@@ -118,7 +130,7 @@
                   <svg class="ic" aria-hidden="true"><use href="icones.svg#mira" /></svg>
                   <span>Definir área de risco</span>
                 </button>
-                <button id="botao-remover-area" class="btn" type="button" disabled>
+                <button id="botao-remover-area" class="btn btn-perigo" type="button" disabled>
                   <svg class="ic" aria-hidden="true"><use href="icones.svg#x" /></svg>
                   <span>Remover área</span>
                 </button>
@@ -136,7 +148,7 @@
                     <svg class="ic" aria-hidden="true"><use href="icones.svg#mudo" /></svg>
                     <span>Alerta sonoro: desligado</span>
                   </button>
-                  <button id="botao-limpar-logs" class="btn btn-pequeno" type="button">Limpar</button>
+                  <button id="botao-limpar-logs" class="btn btn-pequeno btn-discreto" type="button">Limpar</button>
                 </div>
               </div>
               <ol id="lista-logs" class="lista-logs" aria-live="polite" aria-relevant="additions"></ol>
@@ -202,6 +214,13 @@
             </div>
           </div>
 
+          <div class="kpis" aria-label="Indicadores principais">
+            <div class="kpi"><span class="kpi-rot">Ocorrências</span><b class="kpi-val" id="kpi-total">—</b><span class="kpi-sub" id="kpi-total-sub"></span></div>
+            <div class="kpi" id="kpi-pend-cartao"><span class="kpi-rot">Pendentes de revisão</span><b class="kpi-val" id="kpi-pend">—</b><span class="kpi-sub" id="kpi-pend-sub"></span></div>
+            <div class="kpi"><span class="kpi-rot">Infração mais frequente</span><b class="kpi-val menor" id="kpi-tipo">—</b><span class="kpi-sub" id="kpi-tipo-sub"></span></div>
+            <div class="kpi"><span class="kpi-rot">Última ocorrência</span><b class="kpi-val menor" id="kpi-ultima">—</b><span class="kpi-sub" id="kpi-ultima-sub"></span></div>
+          </div>
+
           <div class="grade">
             <section class="cartao heroi" aria-labelledby="h-conf">
               <h2 id="h-conf">Conformidade geral</h2>
@@ -237,6 +256,17 @@
                 <button id="ver-todas" class="btn btn-pequeno" type="button">Ver todas</button>
               </div>
               <div id="fila-pendentes"></div>
+            </section>
+
+            <section class="cartao historico" aria-labelledby="h-hist">
+              <h2 id="h-hist">Histórico recente</h2>
+              <div class="tabela-wrap">
+                <table class="tabela">
+                  <thead><tr><th scope="col">Data</th><th scope="col">Infração</th><th scope="col">Local no quadro</th><th scope="col" class="num">Confiança (pessoa)</th><th scope="col"><span class="sr-only">Ação</span></th></tr></thead>
+                  <tbody id="tabela-historico"></tbody>
+                </table>
+              </div>
+              <p id="historico-vazio" class="vazio" hidden>Nenhuma ocorrência registrada.</p>
             </section>
           </div>
         </section>

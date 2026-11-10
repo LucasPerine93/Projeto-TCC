@@ -481,8 +481,10 @@
     viewer.insertBefore(dom, viewer.firstChild);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x080c11);
-    scene.fog = new THREE.FogExp2(0x080c11, 0.0095);
+    // Fundo azul-marinho profundo alinhado à identidade visual do painel.
+    // Mantém a mesma iluminação e o mesmo custo de renderização.
+    scene.background = new THREE.Color(0x0a1424);
+    scene.fog = new THREE.FogExp2(0x0a1424, 0.0092);
     const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 300);
     camera.layers.enable(2);
 
@@ -511,9 +513,9 @@
 
     const fc = document.createElement('canvas'); fc.width = fc.height = 256;
     const fx = fc.getContext('2d');
-    fx.fillStyle = '#18222d'; fx.fillRect(0, 0, 256, 256);
-    fx.fillStyle = '#1d2936'; fx.fillRect(0, 0, 128, 128); fx.fillRect(128, 128, 128, 128);
-    fx.strokeStyle = 'rgba(130, 165, 200, 0.14)'; fx.lineWidth = 2;
+    fx.fillStyle = '#17263a'; fx.fillRect(0, 0, 256, 256);
+    fx.fillStyle = '#1c3048'; fx.fillRect(0, 0, 128, 128); fx.fillRect(128, 128, 128, 128);
+    fx.strokeStyle = 'rgba(145, 181, 222, 0.17)'; fx.lineWidth = 2;
     fx.strokeRect(0, 0, 128, 128); fx.strokeRect(128, 128, 128, 128);
     fx.strokeStyle = 'rgba(242, 183, 5, 0.18)'; fx.lineWidth = 1;
     fx.beginPath(); fx.moveTo(128, 0); fx.lineTo(128, 256); fx.moveTo(0, 128); fx.lineTo(256, 128); fx.stroke();

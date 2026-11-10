@@ -43,11 +43,13 @@ async function verificarCamera() {
       cameraNoAr = true;
     }
     definirChip("chip-camera", "ok", "Câmera no ar");
+    definirChip("cam-estado", "ok", "Ao vivo");
   } catch {
     cameraNoAr = false;
     placeholder.hidden = false;
     mensagemCamera.textContent = "Sem sinal da câmera. Verifique a alimentação e a rede da placa.";
     definirChip("chip-camera", "critico", "Câmera sem sinal");
+    definirChip("cam-estado", "critico", "Sem sinal");
   } finally {
     clearTimeout(limite);
   }
@@ -113,6 +115,20 @@ botaoSom.addEventListener("click", () => {
 });
 atualizarBotaoSom();
 
+/* Indicadores da sessão: contam só o que chegou pelo socket (nada é estimado). */
+const kpi = (id) => document.getElementById(id);
+let totalEventos = 0, totalAlertas = 0;
+function contarEvento(info, agora) {
+  totalEventos += 1;
+  kpi("kpi-eventos").textContent = totalEventos.toLocaleString("pt-BR");
+  if (!info.infracao) return;
+  totalAlertas += 1;
+  kpi("kpi-alertas").textContent = totalAlertas.toLocaleString("pt-BR");
+  kpi("kpi-alertas-cartao").dataset.tom = "critico";
+  kpi("kpi-ultimo").textContent = hora(agora);
+  kpi("kpi-ultimo-sub").textContent = info.texto.length > 46 ? `${info.texto.slice(0, 45)}…` : info.texto;
+}
+
 /** "[ALERTA]: texto" -> { tag, texto, classe, icone } */
 function classificar(bruto) {
   const m = String(bruto).match(/^\s*\[([^\]]+)\]\s*:?\s*(.*)$/s);
@@ -140,6 +156,7 @@ ui.on_message("log_deteccao", (bruto) => {
   logsVazio.hidden = true;
   if (preso) listaLogs.scrollTop = listaLogs.scrollHeight;
 
+  contarEvento(info, agora);
   if (info.infracao) sinalizar();
   if (/cena salva/i.test(info.texto)) {
     document.dispatchEvent(new CustomEvent("nova-ocorrencia"));
@@ -183,6 +200,7 @@ function mostrarArea(area) {
   if (areaAtual) retangulo(...areaAtual);
   else ctx.clearRect(0, 0, canvas.width, canvas.height);
   botaoRemover.disabled = !areaAtual;
+  quadro.dataset.area = areaAtual ? "ativa" : "";
   definirChip("chip-area", areaAtual ? "ok" : "neutro", areaAtual ? "Área de risco ativa" : "Sem área de risco");
   botaoDefinir.querySelector("span").textContent = areaAtual ? "Redefinir área de risco" : "Definir área de risco";
 }

@@ -3,7 +3,8 @@ import { apiJson } from "./api.js";
 import { el, icone, infoTipo, ordemGravidade, formatarPercentual, plural } from "./util.js";
 import { registrarTela, irPara } from "./nucleo.js";
 import { desenharLinha, desenharRosca } from "./grafico.js";
-import { cenasPendentes, criarItemCena, abrirDetalhe, carregarOcorrencias, jaCarregou, filtrarPorStatus } from "./tela_ocorrencias.js";
+import { cenasPendentes, criarItemCena, abrirDetalhe, carregarOcorrencias, jaCarregou, filtrarPorStatus, todasAsCenas } from "./tela_ocorrencias.js";
+import { dataHoraRelativa, pilulaTipo } from "./util.js";
 
 const META = 95;
 const LIMITE_CRITICO = 85;
@@ -119,10 +120,47 @@ function desenhar() {
     el("span", { class: "leg-pct" }, `${Math.round((it.valor / totalTipos) * 100)}%`)))
     : [el("li", { class: "vazio" }, "Nenhuma ocorrência no período.")]));
 
+  desenharKpis(tipos);
   desenharFila();
 }
 
+/** Indicadores de destaque. Só mostra o que o banco informa; sem dado, fica "—" com uma explicação. */
+function desenharKpis(tipos) {
+  const oc = dados?.ocorrencias;
+  const total = numero(oc?.total), pend = numero(oc?.pendentes);
+  $("kpi-total").textContent = total === null ? "—" : total.toLocaleString("pt-BR");
+  $("kpi-total-sub").textContent = total === null ? "sem dados" : `${NOME_PERIODO[dias]}`;
+  $("kpi-pend").textContent = pend === null ? "—" : pend.toLocaleString("pt-BR");
+  $("kpi-pend-cartao").dataset.tom = pend ? "atencao" : "";
+  $("kpi-pend-sub").textContent = pend === null ? "sem dados" : pend ? "aguardando sua revisão" : "nada pendente";
+  const top = tipos[0];
+  $("kpi-tipo").textContent = top ? infoTipo(top[0]).rotulo : "—";
+  $("kpi-tipo-sub").textContent = top ? `${top[1]} de ${tipos.reduce((s, [, n]) => s + n, 0)} infrações` : "sem infrações no período";
+  const cenas = todasAsCenas();
+  const ultima = cenas.reduce((a, c) => (!a || c.timestamp > a.timestamp ? c : a), null);
+  $("kpi-ultima").textContent = ultima ? dataHoraRelativa(ultima.timestamp) : "—";
+  $("kpi-ultima-sub").textContent = ultima ? infoTipo(ultima.ocorrencias[0]?.tipo_infracao).rotulo : (jaCarregou() ? "nenhuma registrada" : "carregando…");
+}
+
+const pct = (v) => (v === null || v === undefined ? "—" : `${Math.round(Number(v) * (Number(v) <= 1 ? 100 : 1))}%`);
+function desenharHistorico() {
+  const corpo = $("tabela-historico");
+  const lista = [...todasAsCenas()].sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)).slice(0, 8);
+  $("historico-vazio").hidden = lista.length > 0 || !jaCarregou();
+  corpo.replaceChildren(...lista.map((c) => {
+    const o = c.ocorrencias[0] ?? {};
+    const local = o.posicao_x != null && o.posicao_y != null ? `x ${Math.round(o.posicao_x)} · y ${Math.round(o.posicao_y)}` : "—";
+    return el("tr", {},
+      el("td", {}, dataHoraRelativa(c.timestamp)),
+      el("td", {}, [...new Set(c.ocorrencias.map((x) => x.tipo_infracao))].map((t) => pilulaTipo(t))),
+      el("td", {}, local),
+      el("td", { class: "num" }, pct(o.conf_pessoa)),
+      el("td", {}, el("button", { class: "btn btn-pequeno", type: "button", onclick: () => abrirDetalhe(c) }, "Detalhes")));
+  }));
+}
+
 function desenharFila() {
+  desenharHistorico();
   const fila = $("fila-pendentes");
   const pend = cenasPendentes();
   $("ver-todas").hidden = pend.length === 0;
