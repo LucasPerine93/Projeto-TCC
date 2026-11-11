@@ -1,11 +1,11 @@
-(function () {
+﻿(function () {
   'use strict';
 
   // ---------- Constantes de escala ----------
   const W = 320, H = 240, B = 4;                 // canvas 2D e bloco de varredura (4x4 px)
   const COLS = W / B, ROWS = H / B;              // grade de 80 x 60 blocos
   const CELL = 0.5;                              // 1 bloco = 0,5 m no mundo 3D
-  const WW = COLS * CELL, WH = ROWS * CELL;      // galpão de 40 m x 30 m
+  const WW = COLS * CELL, WH = ROWS * CELL;      // galpÃ£o de 40 m x 30 m
   const WALL_H = 2.8;                            // altura das paredes (eixo Y)
   const THR = 5;                                 // pixels (de 16) para classificar o bloco desenhado
   const META = 95;                               // meta de conformidade do TCC (%)
@@ -13,14 +13,14 @@
 
   const CAMS = [
     { id: '1A', name: 'CAM 1A', sector: 'Corredor Central', pos: [0.5, 2.45, -13.3], target: [2.5, 0, -5.5], wall: [0, -1], fov: 62 },
-    { id: '1B', name: 'CAM 1B', sector: 'Sala de Máquinas', pos: [18.0, 2.45, 1.1], target: [13.0, 0, 6.6], wall: [1, -1], fov: 66, ptz: true },
+    { id: '1B', name: 'CAM 1B', sector: 'Sala de MÃ¡quinas', pos: [18.0, 2.45, 1.1], target: [13.0, 0, 6.6], wall: [1, -1], fov: 66, ptz: true },
     { id: '2A', name: 'CAM 2A', sector: 'Almoxarifado / Prateleiras', pos: [-6.6, 2.45, 2.25], target: [2.5, 0, 3.4], wall: [-1, 0], fov: 62, ptz: true },
   ];
 
   const $ = (id) => document.getElementById(id);
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fmt = (n) => n.toLocaleString('pt-BR');
-  const f1 = (n) => n.toFixed(1).replace('.', ',').replace('-', '−');
+  const f1 = (n) => n.toFixed(1).replace('.', ',').replace('-', 'âˆ’');
 
   const plan = $('plan'), ctx = plan.getContext('2d', { willReadFrequently: true });
   const ov = $('overlay'), octx = ov.getContext('2d');
@@ -29,10 +29,10 @@
   const rawUploadCtx = rawUploadCanvas.getContext('2d', { willReadFrequently: true });
   let hasRawUpload = false;
 
-  // ---------- Estado da visão computacional ----------
+  // ---------- Estado da visÃ£o computacional ----------
   const wallGrid = new Uint8Array(COLS * ROWS);
   const riskGrid = new Uint8Array(COLS * ROWS);
-  const doorGrid = new Uint8Array(COLS * ROWS);  // células onde a CV detectou vão de porta/passagem
+  const doorGrid = new Uint8Array(COLS * ROWS);  // cÃ©lulas onde a CV detectou vÃ£o de porta/passagem
   const pass = new Uint8Array(COLS * ROWS);
   let wallCount = 0, riskCount = 0, freeList = [], riskList = [];
   let wallBoxes = 0, pillarCount = 0, doorCount = 0, riskZonesCount = 0;
@@ -41,18 +41,27 @@
   let activeCam = 0, wallAtStart = 0;
   const camYaw = CAMS.map((d) => Math.atan2(d.target[2] - d.pos[2], d.target[0] - d.pos[0]));
 
-  // ---------- Replay "caixa-preta": ganchos preenchidos pelo gêmeo 3D ----------
+  // ---------- Replay "caixa-preta": ganchos preenchidos pelo gÃªmeo 3D ----------
   let trailFor = null, playReplay = null;
-  const calibs = CAMS.map(() => null);                 // homografia por câmera: { world, img, plan, H }
-  const calibState = { on: false, cur: null };         // calibração em andamento (pontos clicados)
-  // Restaura calibrações salvas (persistem entre recarregamentos de página).
+  const calibs = CAMS.map(() => null);                 // homografia por cÃ¢mera: { world, img, plan, H }
+  const calibState = { on: false, cur: null };         // calibraÃ§Ã£o em andamento (pontos clicados)
+  // Restaura calibraÃ§Ãµes salvas (persistem entre recarregamentos de pÃ¡gina).
   try {
     const saved = localStorage.getItem('epi.gemeo.calibs');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (Array.isArray(parsed)) parsed.forEach((c, i) => { if (c) calibs[i] = c; });
     }
-  } catch (e) { /* localStorage indisponível ou dados corrompidos */ }
+  // Sincroniza com a calibracao persistida no backend (GET /calibracao)
+  try {
+    fetch('/calibracao').then(r => r.ok ? r.json() : null).then(d => {
+      if (d && d.H && d.camId) {
+        const idx = CAMS.findIndex(c => c.id === d.camId);
+        if (idx >= 0) { calibs[idx] = { world: d.world, img: d.img, plan: d.plan, H: d.H, frame: d.frame || { w: 640, h: 480 } }; }
+      }
+    }).catch(() => { /* backend indisponivel */ });
+  } catch (e) { /* fetch nao disponivel */ }
+  } catch (e) { /* localStorage indisponÃ­vel ou dados corrompidos */ }
 
   // ---------- Registro de eventos ----------
   const logEl = $('log');
@@ -69,8 +78,8 @@
       const sp = document.createElement('span'); sp.textContent = it.text;
       li.appendChild(tm); li.appendChild(sp);
       if (it.trail) {
-        const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'replay-btn'; rb.textContent = '▶ Replay 3D';
-        rb.title = 'Reproduzir no 3D o caminho percorrido até esta ocorrência';
+        const rb = document.createElement('button'); rb.type = 'button'; rb.className = 'replay-btn'; rb.textContent = 'â–¶ Replay 3D';
+        rb.title = 'Reproduzir no 3D o caminho percorrido atÃ© esta ocorrÃªncia';
         rb.addEventListener('click', () => { if (playReplay) playReplay(it.trail, it.t); });
         li.appendChild(rb);
       }
@@ -92,13 +101,13 @@
     const seg = (a, b, c, d) => { ctx.beginPath(); ctx.moveTo(a, b); ctx.lineTo(c, d); ctx.stroke(); };
     seg(100, 8, 100, 64); seg(100, 98, 100, 232);                      // porta vertical
     seg(8, 130, 46, 130); seg(76, 130, 100, 130);                      // porta horizontal
-    seg(228, 120, 312, 120); seg(228, 120, 228, 136); seg(228, 168, 228, 232); // porta sala máquinas
+    seg(228, 120, 312, 120); seg(228, 120, 228, 136); seg(228, 168, 228, 232); // porta sala mÃ¡quinas
     ctx.fillStyle = '#000000';
     ctx.fillRect(136, 116, 64, 10); ctx.fillRect(136, 150, 64, 10); ctx.fillRect(136, 184, 64, 10);
   }
   function clearPlan() { ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H); }
 
-  // ---------- Motor de Visão Computacional v5 (Limiar Adaptativo + Detecção de Portais) ----------
+  // ---------- Motor de VisÃ£o Computacional v5 (Limiar Adaptativo + DetecÃ§Ã£o de Portais) ----------
   function scanPlan() {
     const data = ctx.getImageData(0, 0, W, H).data;
     const useAdapt = $('adapt') ? $('adapt').checked : true;
@@ -106,7 +115,7 @@
     wallGrid.fill(0); riskGrid.fill(0); doorGrid.fill(0);
     wallCount = 0; riskCount = 0;
 
-    // Calcula luminância média por bloco para compensar sombras em fotos de plantas
+    // Calcula luminÃ¢ncia mÃ©dia por bloco para compensar sombras em fotos de plantas
     const blockLum = new Float32Array(COLS * ROWS);
     for (let by = 0; by < ROWS; by++) {
       for (let bx = 0; bx < COLS; bx++) {
@@ -121,7 +130,7 @@
 
     for (let by = 0; by < ROWS; by++) {
       for (let bx = 0; bx < COLS; bx++) {
-        // Média local 7x7 blocos ao redor para limiar adaptativo
+        // MÃ©dia local 7x7 blocos ao redor para limiar adaptativo
         let localSum = 0, localCnt = 0;
         if (useAdapt) {
           for (let dy = -3; dy <= 3; dy++) {
@@ -153,7 +162,7 @@
       }
     }
 
-    // Fechamento morfológico leve: remove micro-buracos de 1 célula isolada dentro de paredes grossas
+    // Fechamento morfolÃ³gico leve: remove micro-buracos de 1 cÃ©lula isolada dentro de paredes grossas
     const copyW = new Uint8Array(wallGrid);
     for (let r = 1; r < ROWS - 1; r++) {
       for (let c = 1; c < COLS - 1; c++) {
@@ -165,7 +174,7 @@
       }
     }
 
-    // Em uploads, preserva somente traços estruturais ortogonais e a malha principal da casa.
+    // Em uploads, preserva somente traÃ§os estruturais ortogonais e a malha principal da casa.
     if (source.startsWith('imagem')) {
       const base = new Uint8Array(wallGrid), manhattan = new Uint8Array(COLS * ROWS);
       const runH = (r, c) => {
@@ -182,7 +191,7 @@
         const i = r * COLS + c;
         if (base[i] && (runH(r, c) >= 3 || runV(r, c) >= 3)) manhattan[i] = 1;
       }
-      // Mantém quinas que tocam corridas H/V válidas, sem reintroduzir arcos e curvas isoladas.
+      // MantÃ©m quinas que tocam corridas H/V vÃ¡lidas, sem reintroduzir arcos e curvas isoladas.
       for (let r = 1; r < ROWS - 1; r++) for (let c = 1; c < COLS - 1; c++) {
         const i = r * COLS + c;
         if (!base[i] || manhattan[i]) continue;
@@ -226,11 +235,11 @@
     $('wallCount').textContent = fmt(wallCount);
     $('riskCount').textContent = fmt(riskCount);
     updateWallAux();
-    $('riskAux').textContent = '≈ ' + f1(riskCount * CELL * CELL) + ' m²' + (riskZonesCount ? ' · ' + riskZonesCount + ' zonas' : '');
+    $('riskAux').textContent = 'â‰ˆ ' + f1(riskCount * CELL * CELL) + ' mÂ²' + (riskZonesCount ? ' Â· ' + riskZonesCount + ' zonas' : '');
   }
 
   function updateWallAux() {
-    $('wallAux').textContent = fmt(wallBoxes) + ' vigas · ' + fmt(pillarCount) + ' pilares · ' + fmt(doorCount) + ' portais';
+    $('wallAux').textContent = fmt(wallBoxes) + ' vigas Â· ' + fmt(pillarCount) + ' pilares Â· ' + fmt(doorCount) + ' portais';
   }
 
   function processPlan(reason) {
@@ -238,7 +247,7 @@
     dirty = false; updateNote();
     animateOverlay();
     if (twin) { twin.autoPlaceCams(); twin.rebuild(true); }
-    logEvent((reason || 'Extrusão 3D concluída') + ': ' + fmt(wallBoxes) + ' paredes, ' + fmt(doorCount) + ' portais e ' + fmt(riskCount) + ' células de risco.');
+    logEvent((reason || 'ExtrusÃ£o 3D concluÃ­da') + ': ' + fmt(wallBoxes) + ' paredes, ' + fmt(doorCount) + ' portais e ' + fmt(riskCount) + ' cÃ©lulas de risco.');
   }
 
   let softTimer = 0, softPending = false;
@@ -346,7 +355,7 @@
       else {
         softUpdate();
         if (wallCount !== wallAtStart) processPlan('Planta editada');
-        else logEvent('Área de risco ' + (tool === 'risk' ? 'pintada' : 'apagada') + ' na planta: ' + fmt(riskCount) + ' células de risco.');
+        else logEvent('Ãrea de risco ' + (tool === 'risk' ? 'pintada' : 'apagada') + ' na planta: ' + fmt(riskCount) + ' cÃ©lulas de risco.');
       }
     }
   }
@@ -354,7 +363,7 @@
   plan.addEventListener('pointercancel', endDraw);
   function markDirty() { dirty = true; source = 'planta editada'; updateNote(); }
 
-  $('process').addEventListener('click', () => processPlan('Extrusão 3D atualizada'));
+  $('process').addEventListener('click', () => processPlan('ExtrusÃ£o 3D atualizada'));
   $('sample').addEventListener('click', () => { drawSample(); source = 'planta de exemplo'; processPlan('Planta de exemplo carregada'); });
   $('clear').addEventListener('click', () => { clearPlan(); source = 'planta em branco'; processPlan('Planta limpa'); });
   $('showGrid').addEventListener('change', (e) => { ov.hidden = !e.target.checked; });
@@ -429,14 +438,14 @@
         hasRawUpload = true; source = 'imagem enviada (' + f.name + ')';
         renderCleanUpload('Imagem recortada e limpa por espessura');
       };
-      img.onerror = () => logEvent('Não foi possível ler a imagem. Tente PNG ou JPG.', 'alert');
+      img.onerror = () => logEvent('NÃ£o foi possÃ­vel ler a imagem. Tente PNG ou JPG.', 'alert');
       img.src = reader.result;
     };
     reader.readAsDataURL(f); e.target.value = '';
   });
 
   $('scan360').addEventListener('click', () => {
-    if (!planBounds) { logEvent('Scan 360° indisponível: nenhuma parede estrutural foi detectada.', 'alert'); return; }
+    if (!planBounds) { logEvent('Scan 360Â° indisponÃ­vel: nenhuma parede estrutural foi detectada.', 'alert'); return; }
     cancelAnimationFrame(scanRAF);
     const cx = (planBounds.minCol + planBounds.maxCol + 1) * B / 2, cy = (planBounds.minRow + planBounds.maxRow + 1) * B / 2;
     const halfW = (planBounds.maxCol - planBounds.minCol + 1) * CELL / 2;
@@ -460,7 +469,7 @@
       if (p < 1) scanRAF = requestAnimationFrame(sweep);
       else {
         drawOverlay(COLS, false);
-        logEvent('Scan 360° concluído: Perímetro ' + f1(perimeter) + 'm · ' + f1(halfW * 2) + 'm × ' + f1(halfH * 2) + 'm detectado via Telemetria Óptica (d=' + f1(opticalDistance) + 'm; ' + ranges.length + ' raios).', 'ok');
+        logEvent('Scan 360Â° concluÃ­do: PerÃ­metro ' + f1(perimeter) + 'm Â· ' + f1(halfW * 2) + 'm Ã— ' + f1(halfH * 2) + 'm detectado via Telemetria Ã“ptica (d=' + f1(opticalDistance) + 'm; ' + ranges.length + ' raios).', 'ok');
       }
     })(started);
   });
@@ -474,11 +483,11 @@
     bannerEl.dataset.state = state; bTitle.textContent = title; bSub.textContent = sub;
   }
 
-  // ---------- Gêmeo Digital 3D v5.0 (Three.js + PBR + Extrusão Arquitetônica) ----------
+  // ---------- GÃªmeo Digital 3D v5.0 (Three.js + PBR + ExtrusÃ£o ArquitetÃ´nica) ----------
   function initTwin() {
     const viewer = $('viewer');
     const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // teto de 1,5: acima disso o ganho visual é pequeno e o custo de pixels cresce rápido
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));   // teto de 1,5: acima disso o ganho visual Ã© pequeno e o custo de pixels cresce rÃ¡pido
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.shadowMap.autoUpdate = false;
@@ -489,14 +498,14 @@
     viewer.insertBefore(dom, viewer.firstChild);
 
     const scene = new THREE.Scene();
-    // Fundo azul-marinho profundo alinhado à identidade visual do painel.
-    // Mantém a mesma iluminação e o mesmo custo de renderização.
+    // Fundo azul-marinho profundo alinhado Ã  identidade visual do painel.
+    // MantÃ©m a mesma iluminaÃ§Ã£o e o mesmo custo de renderizaÃ§Ã£o.
     scene.background = new THREE.Color(0x0a1424);
     scene.fog = new THREE.FogExp2(0x0a1424, 0.0092);
     const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 300);
     camera.layers.enable(2);
 
-    // Iluminação industrial multi-fonte (Hemisférica + Sol direcional + Preenchimento frio)
+    // IluminaÃ§Ã£o industrial multi-fonte (HemisfÃ©rica + Sol direcional + Preenchimento frio)
     scene.add(new THREE.HemisphereLight(0xd4e4f7, 0x18222f, 0.88));
     const sun = new THREE.DirectionalLight(0xfff7e8, 1.02);
     sun.position.set(-16, 32, 20);
@@ -512,7 +521,7 @@
     rimLight.position.set(22, 18, -18);
     scene.add(rimLight);
 
-    // Piso Epóxi Industrial de alta definição com juntas de dilatação e marcações técnicas
+    // Piso EpÃ³xi Industrial de alta definiÃ§Ã£o com juntas de dilataÃ§Ã£o e marcaÃ§Ãµes tÃ©cnicas
     const ground = new THREE.Mesh(new THREE.PlaneGeometry(260, 220), new THREE.MeshStandardMaterial({ color: 0x090d13, roughness: 1 }));
     ground.rotation.x = -Math.PI / 2; ground.position.y = -0.34; scene.add(ground);
 
@@ -554,7 +563,7 @@
     hx.strokeRect(3, 3, 122, 122);
     const htex = new THREE.CanvasTexture(hz);
 
-    // Estrutura de Teto Industrial (Treliças metálicas + Luminárias LED High-Bay)
+    // Estrutura de Teto Industrial (TreliÃ§as metÃ¡licas + LuminÃ¡rias LED High-Bay)
     const roofGroup = new THREE.Group();
     const beamMat = new THREE.MeshStandardMaterial({ color: 0x263241, roughness: 0.5, metalness: 0.65, transparent: true, opacity: 0.88 });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xe0f2fe });
@@ -572,10 +581,10 @@
     $('toggleRoof').addEventListener('click', (e) => {
       roofGroup.visible = !roofGroup.visible;
       e.currentTarget.setAttribute('aria-pressed', String(roofGroup.visible));
-      e.currentTarget.textContent = 'Treliças e iluminação: ' + (roofGroup.visible ? 'ligadas' : 'desligadas');
+      e.currentTarget.textContent = 'TreliÃ§as e iluminaÃ§Ã£o: ' + (roofGroup.visible ? 'ligadas' : 'desligadas');
     });
 
-    // Malhas instanciadas para Extrusão CAD/BIM (Paredes, Topo, Rodapé, Pilares H, Portais e Zonas de Risco)
+    // Malhas instanciadas para ExtrusÃ£o CAD/BIM (Paredes, Topo, RodapÃ©, Pilares H, Portais e Zonas de Risco)
     const MAXI = COLS * ROWS;
     const unitBox = new THREE.BoxGeometry(1, 1, 1);
     const wallMat = new THREE.MeshStandardMaterial({ map: wtex, color: 0xd8e0e8, roughness: 0.72, metalness: 0.08 });
@@ -636,7 +645,7 @@
       return out;
     }
 
-    // Portais ultra-restritos: vão de 2–4 células, apoios contínuos e faces livres.
+    // Portais ultra-restritos: vÃ£o de 2â€“4 cÃ©lulas, apoios contÃ­nuos e faces livres.
     function detectDoors() {
       doorGrid.fill(0);
       const doors = [], visited = new Uint8Array(COLS * ROWS);
@@ -710,14 +719,14 @@
       if (wallMesh.instanceColor) wallMesh.instanceColor.needsUpdate = true;
       edgeGeo.setDrawRange(0, n * 8); edgeGeo.attributes.position.needsUpdate = true; edges.visible = n > 0;
 
-      // Portais / Vergas superiores de portas detectadas pela Visão Computacional
+      // Portais / Vergas superiores de portas detectadas pela VisÃ£o Computacional
       const doors = detectDoors();
       let li = 0;
       doors.forEach((d) => {
         if (li >= 500) return;
         const sx = d.w * CELL, sz = d.h * CELL;
         const px = (d.c + d.w / 2) * CELL - WW / 2, pz = (d.r + d.h / 2) * CELL - WH / 2;
-        // Verga superior (acima da passagem dos operários, em y = 2.45m)
+        // Verga superior (acima da passagem dos operÃ¡rios, em y = 2.45m)
         m4.compose(vP.set(px, WALL_H - 0.18, pz), qI, vS.set(sx + 0.06, 0.22, sz + 0.06));
         lintelMesh.setMatrixAt(li++, m4);
         const stripeY = WALL_H - 0.055;
@@ -740,10 +749,10 @@
 
       wallBoxes = n; pillarCount = pi; doorCount = doors.length; riskZonesCount = riskRects.length;
       updateWallAux();
-      $('riskAux').textContent = '≈ ' + f1(riskCount * CELL * CELL) + ' m² · ' + riskZonesCount + ' zona(s)';
+      $('riskAux').textContent = 'â‰ˆ ' + f1(riskCount * CELL * CELL) + ' mÂ² Â· ' + riskZonesCount + ' zona(s)';
     }
 
-    // ---------- Operários (Layer 1 para CCTV + Totens na Layer 2 para Mapa 3D) ----------
+    // ---------- OperÃ¡rios (Layer 1 para CCTV + Totens na Layer 2 para Mapa 3D) ----------
     const SHIRT_HEX = 0x3b4552, VEST_HEX = 0xa3e635, VEST_EMISSIVE = 0x1f3a00, ALERT_RED = 0xef4444, ALERT_GLOW = 0xb91c1c;
 
     function makeLabel(text, color) {
@@ -760,11 +769,11 @@
       const tex = new THREE.CanvasTexture(c);
       const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true }));
       sp.scale.set(2.2, 0.77, 1);
-      sp.userData.redraw = (txt) => { draw(txt); tex.needsUpdate = true; };   // reaproveita a textura quando o rótulo muda
+      sp.userData.redraw = (txt) => { draw(txt); tex.needsUpdate = true; };   // reaproveita a textura quando o rÃ³tulo muda
       return sp;
     }
 
-    // Geometrias e materiais comuns são criados UMA vez e compartilhados por todos os operários (menos memória e menos draw setup).
+    // Geometrias e materiais comuns sÃ£o criados UMA vez e compartilhados por todos os operÃ¡rios (menos memÃ³ria e menos draw setup).
     const GEO = {
       body: new THREE.CylinderGeometry(0.29, 0.29, 1.4, 20), vest: new THREE.CylinderGeometry(0.315, 0.315, 0.95, 20, 1, true),
       stripe: new THREE.CylinderGeometry(0.322, 0.322, 0.07, 20, 1, true), head: new THREE.SphereGeometry(0.2, 18, 14),
@@ -807,10 +816,10 @@
                temCapacete: true, temColete: true, emInfracao: false,
                seenBy: [false, false, false], tracked: true, lastSeenT: 0, lastSeenX: 0, lastSeenZ: 0, tx: 0, tz: 0, identified: false, idNum: 101 + i, totem: null };
     }
-    // Pool de avatares: a simulação usa só os 2 primeiros (SIM_N); no modo real cada trilha recebe um avatar livre do pool.
+    // Pool de avatares: a simulaÃ§Ã£o usa sÃ³ os 2 primeiros (SIM_N); no modo real cada trilha recebe um avatar livre do pool.
     const SIM_N = 2, POOL_N = 6;
     const workers = Array.from({ length: POOL_N }, (_, i) => makeWorker(i, i === 0 ? 0.6 : 0.4));
-    let liveMode = false;                                  // true = só dados reais (Arduino / WebSocket); a simulação fica desligada
+    let liveMode = false;                                  // true = sÃ³ dados reais (Arduino / WebSocket); a simulaÃ§Ã£o fica desligada
 
     function spawn(w) {
       if (liveMode || w.slot >= SIM_N) return;
@@ -894,7 +903,7 @@
 
     function goToRisk(w) {
       if (!w.active) return;
-      if (!riskList.length) { logEvent('Sem célula de risco navegável para ' + w.name + '.', 'alert'); return; }
+      if (!riskList.length) { logEvent('Sem cÃ©lula de risco navegÃ¡vel para ' + w.name + '.', 'alert'); return; }
       const start = nearestPassable(toCol(w.x), toRow(w.z));
       if (!start) return;
       let best = null;
@@ -903,9 +912,9 @@
         const p = findPath(start[0], start[1], idx % COLS, (idx / COLS) | 0);
         if (p && p.length > 1 && (!best || p.length < best.length)) best = p;
       }
-      if (!best) { logEvent(w.name + ': nenhuma rota até a área de risco a partir daqui.', 'alert'); return; }
+      if (!best) { logEvent(w.name + ': nenhuma rota atÃ© a Ã¡rea de risco a partir daqui.', 'alert'); return; }
       w.path = best; w.pi = 1; w.goingRisk = true; w.wait = 0;
-      logEvent(w.name + ' recebeu rota BFS até a área de risco (' + best.length + ' células).');
+      logEvent(w.name + ' recebeu rota BFS atÃ© a Ã¡rea de risco (' + best.length + ' cÃ©lulas).');
     }
 
     function toggleEpi(w, kind) {
@@ -959,18 +968,18 @@
       const card = $('confCard');
       if (!totalPessoaFrames) {
         setAttr(card, 'data-state', 'none');
-        setText($('confVal'), '—'); setText($('confStatus'), 'Aguardando amostras');
+        setText($('confVal'), 'â€”'); setText($('confStatus'), 'Aguardando amostras');
         $('confFill').style.width = '0%';
-        setText($('confAux'), 'Meta do TCC: ' + META + '% · 0 pessoas-frame');
+        setText($('confAux'), 'Meta do TCC: ' + META + '% Â· 0 pessoas-frame');
         return;
       }
       const pct = conformesPessoaFrames / totalPessoaFrames * 100;
       const ok = pct >= META, warn = !ok && pct >= 85;
       setAttr(card, 'data-state', ok ? 'ok' : warn ? 'warn' : 'bad');
       setText($('confVal'), f1(pct) + '%');
-      setText($('confStatus'), ok ? '✓ Dentro da meta' : '▼ Abaixo da meta (' + f1(pct - META) + ' p.p.)');
+      setText($('confStatus'), ok ? 'âœ“ Dentro da meta' : 'â–¼ Abaixo da meta (' + f1(pct - META) + ' p.p.)');
       $('confFill').style.width = pct.toFixed(1) + '%';
-      setText($('confAux'), fmt(conformesPessoaFrames) + ' de ' + fmt(totalPessoaFrames) + ' pessoas-frame conformes · meta ' + META + '%');
+      setText($('confAux'), fmt(conformesPessoaFrames) + ' de ' + fmt(totalPessoaFrames) + ' pessoas-frame conformes Â· meta ' + META + '%');
     }
     $('confReset').addEventListener('click', () => {
       totalPessoaFrames = 0; conformesPessoaFrames = 0; sampleAcc = 0;
@@ -982,7 +991,7 @@
       const parts = [];
       if (!w.temCapacete) parts.push('sem Capacete');
       if (!w.temColete) parts.push('sem Colete');
-      if (w.inRisk) parts.push('invadiu Área de Risco');
+      if (w.inRisk) parts.push('invadiu Ãrea de Risco');
       return w.name + ' ' + parts.join(' + ');
     };
 
@@ -992,10 +1001,10 @@
         const emInfracao = w.inRisk || !w.temCapacete || !w.temColete;
         w.emInfracao = emInfracao;
         const n = w.nodes;
-        const oculto = w.slot >= SIM_N && !w.active;               // vagas do pool só aparecem quando ocupadas
+        const oculto = w.slot >= SIM_N && !w.active;               // vagas do pool sÃ³ aparecem quando ocupadas
         if (w.el.hidden !== oculto) w.el.hidden = oculto;
         if (w.cn && w.cn.li.hidden !== oculto) w.cn.li.hidden = oculto;
-        setText(n.name, w.identified && !liveMode ? w.name + ' · ID #' + w.idNum : w.name);
+        setText(n.name, w.identified && !liveMode ? w.name + ' Â· ID #' + w.idNum : w.name);
         setText(n.cap, 'Capacete: ' + (w.capKnown === false ? '?' : w.temCapacete ? 'OK' : 'SEM'));
         setText(n.vest, 'Colete: ' + (w.vestKnown === false ? '?' : w.temColete ? 'OK' : 'SEM'));
         setAttr(n.cap, 'data-off', w.temCapacete ? '0' : '1');
@@ -1004,34 +1013,34 @@
         if (n.risk.disabled !== noRisk) n.risk.disabled = noRisk;
 
         if (!w.active) {
-          setText(n.pill, liveMode ? 'Livre' : 'Sem rota'); setText(n.xy, liveMode ? 'aguardando trilha real' : 'sem área navegável'); setText(n.inv, '');
+          setText(n.pill, liveMode ? 'Livre' : 'Sem rota'); setText(n.xy, liveMode ? 'aguardando trilha real' : 'sem Ã¡rea navegÃ¡vel'); setText(n.inv, '');
           setAttr(w.el, 'data-alert', '0');
           return;
         }
         setAttr(w.el, 'data-alert', emInfracao ? '1' : '0');
         const semEpi = !w.temCapacete || !w.temColete;
-        setText(n.pill, !w.tracked ? 'SEM SINAL' : w.inRisk && semEpi ? 'INFRAÇÃO' : w.inRisk ? 'INVASÃO' : semEpi ? 'SEM EPI' : (w.moving ? 'Em rota' : 'Parado'));
-        setText(n.xy, (liveMode ? 'real · ' : '') + 'X ' + f1(w.tx) + ' · Z ' + f1(w.tz) + ' m' + (w.tracked ? '' : ' · última posição'));
-        setText(n.inv, 'invasões: ' + w.invasions);
+        setText(n.pill, !w.tracked ? 'SEM SINAL' : w.inRisk && semEpi ? 'INFRAÃ‡ÃƒO' : w.inRisk ? 'INVASÃƒO' : semEpi ? 'SEM EPI' : (w.moving ? 'Em rota' : 'Parado'));
+        setText(n.xy, (liveMode ? 'real Â· ' : '') + 'X ' + f1(w.tx) + ' Â· Z ' + f1(w.tz) + ' m' + (w.tracked ? '' : ' Â· Ãºltima posiÃ§Ã£o'));
+        setText(n.inv, 'invasÃµes: ' + w.invasions);
         if (emInfracao && w.tracked) bad.push(w);
       });
 
       if (liveMode && !workers.some((w) => w.active)) {
         const fe = fonte.estado(), ok = fe.estado === 'ativa';
         setBanner(ok ? 'ok' : 'idle', ok ? 'Dados reais ativos. Nenhum trabalhador na cena.' : 'Sem dados reais do Arduino',
-          ok ? 'Fonte: ' + (fe.canal === 'painel' ? 'Arduino (conexão do painel)' : fe.url) + (semPosicao ? ' · ' + semPosicao + ' trilha(s) sem posição na planta (calibração pendente)' : '') : (fe.rotulo || 'Escolha uma fonte de dados.') + '. Nenhum dado simulado está sendo exibido.');
+          ok ? 'Fonte: ' + (fe.canal === 'painel' ? 'Arduino (conexÃ£o do painel)' : fe.url) + (semPosicao ? ' Â· ' + semPosicao + ' trilha(s) sem posiÃ§Ã£o na planta (calibraÃ§Ã£o pendente)' : '') : (fe.rotulo || 'Escolha uma fonte de dados.') + '. Nenhum dado simulado estÃ¡ sendo exibido.');
       } else if (!workers.some((w) => w.active)) {
-        setBanner('idle', 'Nenhuma área navegável encontrada na planta', 'Abra passagens entre as paredes ou carregue outra planta.');
+        setBanner('idle', 'Nenhuma Ã¡rea navegÃ¡vel encontrada na planta', 'Abra passagens entre as paredes ou carregue outra planta.');
       } else if (bad.length) {
-        setBanner('alert', 'ALERTA CRÍTICO: ' + bad.map(describe).join(' · ') + '!',
-          bad.map((w) => w.name + ' em X ' + f1(w.tx) + ' · Z ' + f1(w.tz) + ' m').join('   |   '));
+        setBanner('alert', 'ALERTA CRÃTICO: ' + bad.map(describe).join(' Â· ') + '!',
+          bad.map((w) => w.name + ' em X ' + f1(w.tx) + ' Â· Z ' + f1(w.tz) + ' m').join('   |   '));
       } else {
-        setBanner('ok', 'Monitoramento ativo. Nenhuma infração de EPI ou de área de risco.', fmt(riskCount) + ' células de risco vigiadas em ' + f1(riskCount * CELL * CELL) + ' m².');
+        setBanner('ok', 'Monitoramento ativo. Nenhuma infraÃ§Ã£o de EPI ou de Ã¡rea de risco.', fmt(riskCount) + ' cÃ©lulas de risco vigiadas em ' + f1(riskCount * CELL * CELL) + ' mÂ².');
       }
       renderConformity();
     }
 
-    // ---------- Telemetria Industrial: Totens Táticos + Billboards 2D ----------
+    // ---------- Telemetria Industrial: Totens TÃ¡ticos + Billboards 2D ----------
     const TOT = { ok: '#3ccf7e', bad: '#ef4444', lost: '#8a96a3' };
     const BREAD = 14;
     function drawHelmet(g, cx, cy, sz) {
@@ -1109,13 +1118,13 @@
         g.strokeStyle = '#0d5e36'; g.lineWidth = 9; g.strokeRect(x + 2, y + 2, W - 4, H - 4);
         g.strokeStyle = '#3ccf7e'; g.lineWidth = 5; g.strokeRect(x + 9, y + 9, W - 18, H - 18);
         g.fillStyle = '#17803d'; g.fillRect(x + 12, y + 12, W - 24, 38);
-        g.fillStyle = '#ffffff'; g.font = '800 19px ' + mono; g.fillText('● RASTREIO ATIVO    ID #' + id, 256, y + 31);
+        g.fillStyle = '#ffffff'; g.font = '800 19px ' + mono; g.fillText('â— RASTREIO ATIVO    ID #' + id, 256, y + 31);
         g.textAlign = 'left'; g.fillStyle = '#f2fff7'; g.font = '900 46px ' + mono; g.fillText(nm, x + 28, y + 96);
         g.fillStyle = '#9bf3bd'; g.font = '700 17px ' + mono; g.fillText('EPI VALIDADO', x + 31, y + 126);
         [364, 430].forEach((cx) => { g.fillStyle = '#07110b'; g.beginPath(); g.arc(cx, y + 94, 37, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#3ccf7e'; g.lineWidth = 2; g.stroke(); });
         drawHelmet(g, 364, y + 94, 58); drawVest(g, 430, y + 94, 58);
         g.fillStyle = '#17803d'; g.fillRect(354, y + 132, 86, 24);
-        g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.font = '900 17px ' + mono; g.fillText('✓ OK', 397, y + 144);
+        g.fillStyle = '#ffffff'; g.textAlign = 'center'; g.font = '900 17px ' + mono; g.fillText('âœ“ OK', 397, y + 144);
         pointer('#3ccf7e', y + H - 2);
       } else if (state === 'lost') {
         const x = 36, y = 128, W = 440, H = 174;
@@ -1123,10 +1132,10 @@
         g.shadowColor = 'transparent'; g.shadowBlur = 0;
         g.setLineDash([15, 9]); g.strokeStyle = '#cbd5e1'; g.lineWidth = 5; g.strokeRect(x + 4, y + 4, W - 8, H - 8); g.setLineDash([]);
         g.fillStyle = '#0f7490'; g.fillRect(x + 12, y + 12, W - 24, 36);
-        g.fillStyle = '#ecfeff'; g.font = '800 20px ' + mono; g.fillText('◌ ÚLTIMA POSIÇÃO CONHECIDA', 256, y + 30);
+        g.fillStyle = '#ecfeff'; g.font = '800 20px ' + mono; g.fillText('â—Œ ÃšLTIMA POSIÃ‡ÃƒO CONHECIDA', 256, y + 30);
         g.fillStyle = '#f1f5f9'; g.font = '900 37px ' + mono; g.fillText(nm, 256, y + 87);
-        g.fillStyle = '#cbd5e1'; g.font = '800 22px ' + mono; g.fillText('SINAL PERDIDO  ·  ID #' + id, 256, y + 120);
-        g.fillStyle = '#facc15'; g.font = '700 19px ' + mono; g.fillText('há ' + lostSec + ' s sem atualização', 256, y + 151);
+        g.fillStyle = '#cbd5e1'; g.font = '800 22px ' + mono; g.fillText('SINAL PERDIDO  Â·  ID #' + id, 256, y + 120);
+        g.fillStyle = '#facc15'; g.font = '700 19px ' + mono; g.fillText('hÃ¡ ' + lostSec + ' s sem atualizaÃ§Ã£o', 256, y + 151);
         pointer('#cbd5e1', y + H - 1);
       } else {
         const x = 20, y = 12, W = 472, H = 296;
@@ -1135,12 +1144,12 @@
         g.strokeStyle = '#020305'; g.lineWidth = 12; g.strokeRect(x + 5, y + 5, W - 10, H - 10);
         g.strokeStyle = blink ? '#facc15' : '#ef4444'; g.lineWidth = 8; g.strokeRect(x + 15, y + 15, W - 30, H - 30);
         g.fillStyle = '#b91c1c'; g.fillRect(x + 20, y + 20, W - 40, 52);
-        g.fillStyle = '#ffffff'; g.font = '900 25px ' + mono; g.fillText('⚠ ALERTA DE INFRAÇÃO', 256, y + 46);
-        g.fillStyle = '#ffe4e6'; g.font = '900 32px ' + mono; g.fillText(nm + '  ·  ID #' + id, 256, y + 100);
+        g.fillStyle = '#ffffff'; g.font = '900 25px ' + mono; g.fillText('âš  ALERTA DE INFRAÃ‡ÃƒO', 256, y + 46);
+        g.fillStyle = '#ffe4e6'; g.font = '900 32px ' + mono; g.fillText(nm + '  Â·  ID #' + id, 256, y + 100);
         const items = [];
         if (!w.temCapacete) items.push(['SEM CAPACETE', (c, cx, cy) => { drawHelmet(c, cx, cy, 72); slash(c, cx, cy, 76); }]);
         if (!w.temColete) items.push(['SEM COLETE', (c, cx, cy) => { drawVest(c, cx, cy, 72); slash(c, cx, cy, 76); }]);
-        if (w.inRisk) items.push(['ÁREA PROIBIDA', (c, cx, cy) => { drawFloor(c, cx, cy, 72); slash(c, cx, cy, 76); }]);
+        if (w.inRisk) items.push(['ÃREA PROIBIDA', (c, cx, cy) => { drawFloor(c, cx, cy, 72); slash(c, cx, cy, 76); }]);
         const step = 118, start = 256 - ((items.length - 1) * step) / 2;
         items.forEach((it, k) => {
           const cx = start + k * step, cy = y + 177;
@@ -1148,7 +1157,7 @@
           g.strokeStyle = '#ef4444'; g.lineWidth = 3; g.stroke(); it[1](g, cx, cy);
           g.fillStyle = '#fecaca'; g.font = '800 15px ' + mono; g.fillText(it[0], cx, y + 244);
         });
-        g.fillStyle = blink ? '#facc15' : '#ef4444'; g.font = '800 17px ' + mono; g.fillText('AÇÃO IMEDIATA NECESSÁRIA', 256, y + 273);
+        g.fillStyle = blink ? '#facc15' : '#ef4444'; g.font = '800 17px ' + mono; g.fillText('AÃ‡ÃƒO IMEDIATA NECESSÃRIA', 256, y + 273);
         pointer('#ef4444', y + H - 1);
       }
       T.tex.needsUpdate = true;
@@ -1201,7 +1210,7 @@
       });
     }
 
-    // ---------- Câmeras de Segurança + Monitor CCTV ----------
+    // ---------- CÃ¢meras de SeguranÃ§a + Monitor CCTV ----------
     let mainW = 1, mainH = 1;
     const rigs = CAMS.map((def) => {
       const tgt = new THREE.Vector3(def.target[0], def.target[1], def.target[2]);
@@ -1286,10 +1295,10 @@
         if (!blindEl.checked) { w.tracked = true; w.lastSeenT = t; return; }
         if (any) {
           w.lastSeenT = t;
-          if (!w.tracked) { w.tracked = true; w.tx = w.x; w.tz = w.z; logEvent(w.name + ' reencontrado — rastreio ao vivo retomado.', 'ok'); }
+          if (!w.tracked) { w.tracked = true; w.tx = w.x; w.tz = w.z; logEvent(w.name + ' reencontrado â€” rastreio ao vivo retomado.', 'ok'); }
         } else if (w.tracked) {
           w.tracked = false; w.tx = w.x; w.tz = w.z;
-          logEvent(w.name + ' saiu do FOV das câmeras — SINAL PERDIDO (última posição X ' + f1(w.tx) + ' · Z ' + f1(w.tz) + ').', 'alert');
+          logEvent(w.name + ' saiu do FOV das cÃ¢meras â€” SINAL PERDIDO (Ãºltima posiÃ§Ã£o X ' + f1(w.tx) + ' Â· Z ' + f1(w.tz) + ').', 'alert');
         }
         if (w.seenBy[0] && !w.identified) {
           w.identified = true;
@@ -1310,9 +1319,9 @@
       let moved = false;
       rigs.forEach((r, i) => {
         if (!r.ptz) return;
-        // PTZ FREEZE: câmera ativa em edição (pintura ou calibração) mantém yaw/pitch exatos
+        // PTZ FREEZE: cÃ¢mera ativa em ediÃ§Ã£o (pintura ou calibraÃ§Ã£o) mantÃ©m yaw/pitch exatos
         if (i === activeCam && (paint.on || calibState.on)) { r.frozen = true; return; }
-        if (r.frozen) {                                   // retomada sem salto: a fase da varredura continua do ângulo atual
+        if (r.frozen) {                                   // retomada sem salto: a fase da varredura continua do Ã¢ngulo atual
           r.frozen = false; r.lockT = t;
           const q = Math.max(-1, Math.min(1, (r.yaw - r.yaw0) / THREE.MathUtils.degToRad(28)));
           r.phase = Math.asin(q) - t * 0.45;
@@ -1323,8 +1332,8 @@
           const d = Math.hypot(w.x - r.cam.position.x, w.z - r.cam.position.z);
           if (d < best) { best = d; lock = w; }
         });
-        if (lock) { r.lockT = t; if (r.lockW !== lock) { r.lockW = lock; logEvent(r.def.name + ' travou mira em ' + lock.name + ' (infração).', 'alert'); } }
-        else if (r.lockW && t - r.lockT > 0.8) { logEvent(r.def.name + ' liberou a mira — varredura retomada.', 'ok'); r.lockW = null; }
+        if (lock) { r.lockT = t; if (r.lockW !== lock) { r.lockW = lock; logEvent(r.def.name + ' travou mira em ' + lock.name + ' (infraÃ§Ã£o).', 'alert'); } }
+        else if (r.lockW && t - r.lockT > 0.8) { logEvent(r.def.name + ' liberou a mira â€” varredura retomada.', 'ok'); r.lockW = null; }
         let ty, tp;
         if (r.lockW) {
           const dx = r.lockW.x - r.cam.position.x, dz = r.lockW.z - r.cam.position.z;
@@ -1409,7 +1418,7 @@
       const pct = (base, i, k) => Math.round(100 * Math.min(0.99, base + 0.015 * Math.sin(t * 1.7 + i * 2.1 + k * 1.3)));
       const lh = fs + 6;
       const rg = rigs[activeCam], lk = rg.lockW, lkEl = $('cctvLock');
-      if (rg.frozen) { setText(lkEl, '[PTZ PAUSADO P/ EDIÇÃO]'); lkEl.hidden = false; lkEl.classList.add('paused'); }
+      if (rg.frozen) { setText(lkEl, '[PTZ PAUSADO P/ EDIÃ‡ÃƒO]'); lkEl.hidden = false; lkEl.classList.add('paused'); }
       else { lkEl.classList.remove('paused'); if (lk) { setText(lkEl, '[LOCK: ' + lk.name + ']'); lkEl.hidden = false; } else lkEl.hidden = true; }
       workers.forEach((w, i) => {
         let seen = false;
@@ -1421,9 +1430,9 @@
             const bV = boxFrom(cam, w.x - 0.34, w.x + 0.34, 0.42, 1.36, w.z - 0.34, w.z + 0.34);
             const pcol = w.emInfracao ? '#ef4444' : '#38bdf8', pfg = w.emInfracao ? '#fff' : '#04121a';
             const hcol = w.temCapacete ? '#facc15' : '#ef4444', vcol = w.temColete ? '#b6ff3b' : '#ef4444';
-            const real = liveMode && w.conf;                                   // modo real: só confiança que o detector enviou, nunca valor inventado
+            const real = liveMode && w.conf;                                   // modo real: sÃ³ confianÃ§a que o detector enviou, nunca valor inventado
             const ppv = real ? (w.conf.person == null ? null : Math.round(w.conf.person * 100)) : pct(0.94, i, 0);
-            const pp = ppv == null ? '–' : ppv;
+            const pp = ppv == null ? 'â€“' : ppv;
             rect(bP, pcol, 2.5);
             if (activeCam === 0 && !liveMode) {
               const sz = Math.round(Math.max(40, Math.min(78, (bP.y2 - bP.y1) * 0.32)));
@@ -1439,15 +1448,15 @@
             if (bP.y2 - bP.y1 < 110 || !bH || !bV) {
               tag('P ' + pp + '% C:' + (w.temCapacete ? 'OK' : 'SEM') + ' V:' + (w.temColete ? 'OK' : 'SEM'), bP.x1, bP.y1, pcol, pfg);
             } else {
-              tag('Pessoa ' + pp + '%' + (w.identified ? ' · #' + w.idNum : ''), bP.x1, bP.y1, pcol, pfg);
+              tag('Pessoa ' + pp + '%' + (w.identified ? ' Â· #' + w.idNum : ''), bP.x1, bP.y1, pcol, pfg);
               tag(hTxt, bH.x2 + 3, bH.y1 + lh, hcol, w.temCapacete ? '#161200' : '#fff');
               tag(vTxt, bV.x2 + 3, bV.y1 + lh, vcol, w.temColete ? '#0b1400' : '#fff');
             }
           }
         }
         const n = w.cn;
-        setText(n.nm, w.identified && !liveMode ? w.name + ' · ID #' + w.idNum : w.name);
-        setText(n.vis, seen ? 'no campo de visão' : (w.active ? 'fora de campo' : (liveMode ? 'livre' : 'sem rota')));
+        setText(n.nm, w.identified && !liveMode ? w.name + ' Â· ID #' + w.idNum : w.name);
+        setText(n.vis, seen ? 'no campo de visÃ£o' : (w.active ? 'fora de campo' : (liveMode ? 'livre' : 'sem rota')));
         setText(n.cap, 'Capacete ' + (w.capKnown === false ? '?' : w.temCapacete ? 'OK' : 'SEM')); setText(n.vst, 'Colete ' + (w.vestKnown === false ? '?' : w.temColete ? 'OK' : 'SEM'));
         setAttr(n.li, 'data-vis', seen ? '1' : '0');
         n.cap.className = w.temCapacete ? '' : 'bad'; n.vst.className = w.temColete ? '' : 'bad';
@@ -1526,14 +1535,14 @@
     const endPaint = () => {
       if (!paint.down) return;
       paint.down = false; paint.last = null; softUpdate();
-      if (paint.cells) logEvent('Risco ' + (paint.erase ? 'apagado' : 'pintado') + ' pela ' + CAMS[activeCam].name + ': ' + fmt(riskCount) + ' células de risco no total.', paint.erase ? 'ok' : 'alert');
+      if (paint.cells) logEvent('Risco ' + (paint.erase ? 'apagado' : 'pintado') + ' pela ' + CAMS[activeCam].name + ': ' + fmt(riskCount) + ' cÃ©lulas de risco no total.', paint.erase ? 'ok' : 'alert');
     };
     boxesEl.addEventListener('pointerup', endPaint); boxesEl.addEventListener('pointercancel', endPaint);
     boxesEl.addEventListener('pointerleave', () => { hover = null; if (!paint.down) drawBoxes(lastT); });
     function paintTip() {
       const tip = $('cctvTip');
       tip.hidden = !paint.on;
-      tip.textContent = paint.erase ? 'Arraste sobre o piso para apagar a área de risco' : 'Arraste sobre o piso para pintar a área de risco';
+      tip.textContent = paint.erase ? 'Arraste sobre o piso para apagar a Ã¡rea de risco' : 'Arraste sobre o piso para pintar a Ã¡rea de risco';
     }
     $('paintBtn').addEventListener('click', () => {
       if (!paint.on && calibState.on) setCalib(false);
@@ -1552,7 +1561,7 @@
     const toPlanPx = (x, z) => [(x + WW / 2) * (W / WW), (z + WH / 2) * (H / WH)];
     const ptEl = (id) => $(id);
 
-    // ---- 1. mapa de calor histórico ----
+    // ---- 1. mapa de calor histÃ³rico ----
     const HEAT_MAX = 22;
     const heatGrid = new Float32Array(COLS * ROWS);
     const heatCv = document.createElement('canvas'); heatCv.width = COLS; heatCv.height = ROWS;
@@ -1599,7 +1608,7 @@
       e.currentTarget.textContent = 'Mapa de calor: ' + (heatOn ? 'ligado' : 'desligado');
       if (heatOn) drawHeat();
     });
-    $('clearHeat').addEventListener('click', () => { heatGrid.fill(0); heatDirty = false; drawHeat(); logEvent('Histórico do mapa de calor zerado.'); });
+    $('clearHeat').addEventListener('click', () => { heatGrid.fill(0); heatDirty = false; drawHeat(); logEvent('HistÃ³rico do mapa de calor zerado.'); });
 
     // ---- 2. replay temporal "caixa-preta" ----
     const HIST_N = 30, HIST_DT = 0.2;
@@ -1651,7 +1660,7 @@
       g.traverse((o) => o.layers.set(2));
       scene.add(g);
       Object.assign(rpl, { group: g, pts, marker, tag, ring, t0: clock.elapsedTime, end: 0 });
-      logEvent('Replay 3D: ' + trail.name + ', últimos ' + f1(Math.max(0, (n - 1) * HIST_DT)) + ' s até a ocorrência de ' + stamp + '.');
+      logEvent('Replay 3D: ' + trail.name + ', Ãºltimos ' + f1(Math.max(0, (n - 1) * HIST_DT)) + ' s atÃ© a ocorrÃªncia de ' + stamp + '.');
     };
     function updateReplay(t) {
       if (!rpl.group) return;
@@ -1666,7 +1675,7 @@
     }
 
     // ---- 3. calibrador de homografia (4 pontos) ----
-    function solveH(src, dst) {                      // imagem -> planta; resolve o sistema 8x8 por eliminação de Gauss
+    function solveH(src, dst) {                      // imagem -> planta; resolve o sistema 8x8 por eliminaÃ§Ã£o de Gauss
       const A = [];
       for (let i = 0; i < 4; i++) {
         const [x, y] = src[i], [u, v] = dst[i];
@@ -1718,7 +1727,7 @@
       const tip = $('cctvTip');
       if (!calibState.on) { if (!paint.on) tip.hidden = true; return; }
       const n = calibState.cur ? calibState.cur.world.length : 0;
-      tip.hidden = false; tip.textContent = 'Calibração: clique no ponto P' + Math.min(4, n + 1) + ' de 4 sobre o piso';
+      tip.hidden = false; tip.textContent = 'CalibraÃ§Ã£o: clique no ponto P' + Math.min(4, n + 1) + ' de 4 sobre o piso';
     }
     function setCalib(on) {
       if (on === calibState.on) return;
@@ -1736,36 +1745,40 @@
       const dst = cur.world.map((p) => toPlanPx(p[0], p[1]));
       const Hm = solveH(cur.img, dst);
       if (!Hm || Hm.some((r) => r.some((v) => !isFinite(v)))) {
-        logEvent('Calibração de ' + name + ' inválida: os 4 pontos não podem ficar alinhados. Tente de novo.', 'alert');
+        logEvent('CalibraÃ§Ã£o de ' + name + ' invÃ¡lida: os 4 pontos nÃ£o podem ficar alinhados. Tente de novo.', 'alert');
         calibState.cur = { world: [], img: [] }; calibTip(); rebuildCalib3D(); drawCamLayer(); return;
       }
       let err = 0;
       for (let i = 0; i < 4; i++) { const q = applyH(Hm, cur.img[i][0], cur.img[i][1]); err += Math.hypot(q[0] - dst[i][0], q[1] - dst[i][1]); }
       err /= 4;
-      // conferência independente: centro da imagem projetado por H x raio da câmera até o piso
+      // conferÃªncia independente: centro da imagem projetado por H x raio da cÃ¢mera atÃ© o piso
       let chk = '';
       rc.setFromCamera(ndc.set(0, 0), cam);
       if (rc.ray.intersectPlane(floorPlane, hitV)) {
         const ref = toPlanPx(hitV.x, hitV.z), q = applyH(Hm, CV_W / 2, CV_H / 2);
-        chk = ' · erro no centro da imagem: ' + fnum(Math.hypot(q[0] - ref[0], q[1] - ref[1])) + ' px';
+        chk = ' Â· erro no centro da imagem: ' + fnum(Math.hypot(q[0] - ref[0], q[1] - ref[1])) + ' px';
       }
       calibs[activeCam] = { world: cur.world.slice(), img: cur.img.slice(), plan: dst, H: Hm };
-      try { localStorage.setItem('epi.gemeo.calibs', JSON.stringify(calibs.map((c) => c ? { world: c.world, img: c.img, plan: c.plan, H: c.H } : null))); } catch (e) { /* localStorage indisponível */ }
+      try { localStorage.setItem('epi.gemeo.calibs', JSON.stringify(calibs.map((c) => c ? { world: c.world, img: c.img, plan: c.plan, H: c.H } : null))); } catch (e) { /* localStorage indisponÃ­vel */ }
+      // Persiste no backend via POST /calibracao
+      try {
+        const payload = { camId: CAMS[activeCam].id, frame: { w: CV_W, h: CV_H }, img: cur.img.slice(), world: cur.world.slice(), plan: dst, H: Hm, updatedAt: Date.now() };
+        fetch('/calibracao', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then(r => { if (!r.ok) logEvent('Falha ao salvar calibracao no backend (HTTP ' + r.status + ').', 'alert'); }).catch(e => logEvent('Backend indisponivel para /calibracao: ' + e.message, 'alert')); } catch (e) { /* fetch nao disponivel */ }
       const rows = Hm.map((r) => '[' + r.map(fnum).join('  ') + ']').join(' ');
-      logEvent('Homografia 3×3 de ' + name + ' (imagem 640×480 → planta 320×240): H = ' + rows + ' · erro de reprojeção: ' + fnum(err) + ' px' + chk + '.', 'ok');
+      logEvent('Homografia 3Ã—3 de ' + name + ' (imagem 640Ã—480 â†’ planta 320Ã—240): H = ' + rows + ' Â· erro de reprojeÃ§Ã£o: ' + fnum(err) + ' px' + chk + '.', 'ok');
       setCalib(false);
     }
     boxesEl.addEventListener('pointerdown', (e) => {
       if (!calibState.on || (e.pointerType === 'mouse' && e.button !== 0)) return;
       e.preventDefault();
       const h = pickFloor(e), r = boxesEl.getBoundingClientRect();
-      if (!h) { const tip = $('cctvTip'); tip.textContent = 'Ponto fora do piso visível. Escolha outro ponto.'; return; }
+      if (!h) { const tip = $('cctvTip'); tip.textContent = 'Ponto fora do piso visÃ­vel. Escolha outro ponto.'; return; }
       const cur = calibState.cur;
       cur.world.push([h.x, h.z]); cur.img.push([(e.clientX - r.left) / r.width * CV_W, (e.clientY - r.top) / r.height * CV_H]);
       calibTip(); rebuildCalib3D(); drawCamLayer(); drawBoxes(lastT);
       if (cur.world.length === 4) finishCalib();
     });
-    // pinos e quadrilátero sobre a imagem da câmera (ancorados no piso: acompanham a PTZ)
+    // pinos e quadrilÃ¡tero sobre a imagem da cÃ¢mera (ancorados no piso: acompanham a PTZ)
     drawCalibOverlay = (g, cam) => {
       const q = calibs[activeCam] ? calibs[activeCam].world : (calibState.on && calibState.cur ? calibState.cur.world : null);
       if (!q || !q.length) return;
@@ -1784,13 +1797,13 @@
       g.textAlign = 'start';
     };
 
-    // ---- 4. fonte de dados: simulação x dados reais (Arduino) ----
-    // A simulação e os dados reais NUNCA se misturam: ao trocar de fonte, avatares, calor, histórico e conformidade são zerados,
-    // e sem dados reais a cena fica vazia (nenhum avatar fictício é mostrado como se fosse real). O formato das mensagens e o
-    // estado da conexão ficam em fonte_dados.js (GemeoFonte); aqui só se aplica o quadro normalizado à cena.
+    // ---- 4. fonte de dados: simulaÃ§Ã£o x dados reais (Arduino) ----
+    // A simulaÃ§Ã£o e os dados reais NUNCA se misturam: ao trocar de fonte, avatares, calor, histÃ³rico e conformidade sÃ£o zerados,
+    // e sem dados reais a cena fica vazia (nenhum avatar fictÃ­cio Ã© mostrado como se fosse real). O formato das mensagens e o
+    // estado da conexÃ£o ficam em fonte_dados.js (GemeoFonte); aqui sÃ³ se aplica o quadro normalizado Ã  cena.
     const wsBtn = $('wsToggle'), wsPanel = $('wsPanel'), wsStatus = $('wsStatus'), wsUrl = $('wsUrl');
     const slotPorId = new Map();                 // id da trilha real -> avatar do pool
-    const AUSENTE_S = 1.5;                       // tolerância a falhas de 1-2 quadros do detector antes de liberar o avatar
+    const AUSENTE_S = 1.5;                       // tolerÃ¢ncia a falhas de 1-2 quadros do detector antes de liberar o avatar
     let semPosicao = 0, semVaga = 0, avisouVaga = false, avisouPosicao = false;
     const ponte = window.GemeoPonte = { conectado: !!(window.GemeoCanal && window.GemeoCanal.conectado), receber: () => {}, canalConectou: () => {}, parar: () => {} };
     const fonte = GemeoFonte.criarFonte({ staleMs: 3000, aoMudarEstado: (st) => onEstadoFonte(st) });
@@ -1800,17 +1813,17 @@
       const st = fonte.estado();
       const modo = !liveMode ? 'sim' : st.estado === 'ativa' ? 'real' : 'off';
       wsBtn.dataset.mode = modo;
-      const rot = modo === 'sim' ? 'SIMULAÇÃO' : modo === 'real' ? 'DADOS REAIS' : 'SEM DADOS REAIS';
+      const rot = modo === 'sim' ? 'SIMULAÃ‡ÃƒO' : modo === 'real' ? 'DADOS REAIS' : 'SEM DADOS REAIS';
       $('wsLabel').innerHTML = '<span class="mt-long">Fonte: </span>' + rot;
-      $('fonteMarca').textContent = modo === 'sim' ? 'SIMULAÇÃO · dados fictícios, não são da câmera' : modo === 'off' ? 'SEM DADOS REAIS · ' + (st.rotulo || 'escolha uma fonte') : '';
+      $('fonteMarca').textContent = modo === 'sim' ? 'SIMULAÃ‡ÃƒO Â· dados fictÃ­cios, nÃ£o sÃ£o da cÃ¢mera' : modo === 'off' ? 'SEM DADOS REAIS Â· ' + (st.rotulo || 'escolha uma fonte') : '';
       $('fonteMarca').dataset.modo = modo;
-      $('confCard').querySelector('.k-lbl').textContent = 'Conformidade Pessoa-Frame' + (modo === 'sim' ? ' · simulada' : modo === 'real' ? ' · real' : '');
-      $('cctvOrigem').textContent = modo === 'sim' ? 'VISTA VIRTUAL · detecções simuladas' : 'VISTA VIRTUAL · posições reais do detector';
+      $('confCard').querySelector('.k-lbl').textContent = 'Conformidade Pessoa-Frame' + (modo === 'sim' ? ' Â· simulada' : modo === 'real' ? ' Â· real' : '');
+      $('cctvOrigem').textContent = modo === 'sim' ? 'VISTA VIRTUAL Â· detecÃ§Ãµes simuladas' : 'VISTA VIRTUAL Â· posiÃ§Ãµes reais do detector';
       $('cctvRec').textContent = 'VIRTUAL';
       $('wsSim').hidden = !liveMode;
-      const det = modo === 'real' ? ' · ' + (st.taxa ? st.taxa.toFixed(1) + ' quadros/s' : '') + (st.latenciaMs != null ? ' · atraso ≈ ' + Math.round(st.latenciaMs) + ' ms' : '') : '';
+      const det = modo === 'real' ? ' Â· ' + (st.taxa ? st.taxa.toFixed(1) + ' quadros/s' : '') + (st.latenciaMs != null ? ' Â· atraso â‰ˆ ' + Math.round(st.latenciaMs) + ' ms' : '') : '';
       if (liveMode) setStatus((modo === 'real' ? 'Recebendo dados reais' : 'Sem dados reais') + (st.rotulo && modo !== 'real' ? ': ' + st.rotulo : '') + det + '.', modo === 'real' ? 'ok' : 'bad');
-      else setStatus('Simulação ativa: os operários e as infrações são fictícios. Para usar dados reais, escolha uma fonte abaixo.', '');
+      else setStatus('SimulaÃ§Ã£o ativa: os operÃ¡rios e as infraÃ§Ãµes sÃ£o fictÃ­cios. Para usar dados reais, escolha uma fonte abaixo.', '');
     }
     function openPanel(open) {
       wsPanel.hidden = !open; wsBtn.setAttribute('aria-expanded', String(open));
@@ -1825,13 +1838,13 @@
       if (w.totem) { w.totem.pts.length = 0; w.totem.key = ''; }
     }
     const liberarTodos = () => { workers.forEach(liberar); slotPorId.clear(); semPosicao = 0; };
-    function zerarAcumulados() {                // dados de uma fonte não podem contaminar os da outra
+    function zerarAcumulados() {                // dados de uma fonte nÃ£o podem contaminar os da outra
       totalPessoaFrames = 0; conformesPessoaFrames = 0; sampleAcc = 0; heatGrid.fill(0); heatDirty = false; drawHeat(); clearReplay();
       workers.forEach((w) => { w.invasions = 0; });
     }
     function onEstadoFonte(st) {
       if (!liveMode) return;
-      if (st.estado !== 'ativa' && workers.some((w) => w.liveId != null)) liberarTodos();   // sem sinal: nada de posição "congelada" como se fosse atual
+      if (st.estado !== 'ativa' && workers.some((w) => w.liveId != null)) liberarTodos();   // sem sinal: nada de posiÃ§Ã£o "congelada" como se fosse atual
       const tipo = st.estado === 'ativa' ? 'ok' : (st.estado === 'aguardando' || st.estado === 'conectando') ? '' : 'alert';
       if (st.rotulo) logEvent('Fonte real: ' + st.rotulo + '.', tipo);
       renderFonte(); refreshUI();
@@ -1841,35 +1854,34 @@
       if (!liveMode) {
         liveMode = true; liberarTodos(); zerarAcumulados(); avisouVaga = avisouPosicao = false; semVaga = 0;
         workers.forEach((w) => { w.nodes.risk.disabled = true; });
-        logEvent('Modo DADOS REAIS ativado: a simulação foi desligada e os acumulados foram zerados.', 'ok');
+        logEvent('Modo DADOS REAIS ativado: a simulaÃ§Ã£o foi desligada e os acumulados foram zerados.', 'ok');
       }
       abrir(); renderFonte(); refreshUI();
     }
-    function closeSockUi() { /* o WebSocket é gerenciado por GemeoFonte; mantido por clareza */ }
+    function closeSockUi() { /* o WebSocket Ã© gerenciado por GemeoFonte; mantido por clareza */ }
     function voltarSimulacao(msg) {
       if (!liveMode) { openPanel(false); return; }
       fonte.parar(); liveMode = false; liberarTodos(); zerarAcumulados();
       workers.forEach((w) => { w.nodes.risk.disabled = false; });
       workers.forEach(spawn);
-      logEvent(msg || 'Modo SIMULAÇÃO ativado: os dados exibidos voltam a ser fictícios.', 'ok');
+      logEvent(msg || 'Modo SIMULAÃ‡ÃƒO ativado: os dados exibidos voltam a ser fictÃ­cios.', 'ok');
       renderFonte(); refreshUI(); openPanel(false);
     }
 
-    // Projeta um ponto da imagem (u,v em pixels 640×480) para coordenadas do mundo (x,z em metros)
-    // usando a homografia H da câmera ativa. Retorna {x,z} ou null se não houver calibração válida
+    // Projeta um ponto da imagem (u,v em pixels 640Ã—480) para coordenadas do mundo (x,z em metros)
+    // usando a homografia H da cÃ¢mera ativa. Retorna {x,z} ou null se nÃ£o houver calibraÃ§Ã£o vÃ¡lida
     // ou o ponto cair fora dos limites da planta.
     function projImgParaPlano(u, v, camIdx) {
       const cal = calibs[camIdx];
-      if (!cal || !cal.H) return null;
-      // Normaliza o frame de origem (detector: 720x480 via GemeoFonte.FRAME_W/H)
-      // para as dimensões do canvas do CCTV (CV_W=640, CV_H=480) usadas na calibração.
-      const fw = (typeof GemeoFonte !== 'undefined' && GemeoFonte.FRAME_W) ? GemeoFonte.FRAME_W : 720;
+      // Usa a resolucao em que a H foi calculada (cal.frame, padrao 640x480 para
+      // camera virtual; 720x480 quando calibrado via /snapshot ou normalizado do detector).
+      const cf = cal && cal.frame ? cal.frame : { w: 640, h: 480 };
       const fh = (typeof GemeoFonte !== 'undefined' && GemeoFonte.FRAME_H) ? GemeoFonte.FRAME_H : 480;
       const uCal = u * (CV_W / fw);
       const vCal = v * (CV_H / fh);
       const [px, py] = applyH(cal.H, uCal, vCal);
       if (!isFinite(px) || !isFinite(py)) return null;
-      const sx = W / WW, sy = H / WH;          // 8 px/m em ambos os eixos (planta 320×240 → 40×30 m)
+      const sx = W / WW, sy = H / WH;          // 8 px/m em ambos os eixos (planta 320Ã—240 â†’ 40Ã—30 m)
       const x = px / sx - WW / 2;
       const z = py / sy - WH / 2;
       if (Math.abs(x) > WW / 2 || Math.abs(z) > WH / 2) return null;
@@ -1882,7 +1894,7 @@
         let w = slotPorId.get(m.id);
         if (!w) {
           w = workers.find((k) => k.liveId == null);
-          if (!w) { semVaga++; if (!avisouVaga) { avisouVaga = true; logEvent('Mais de ' + POOL_N + ' trabalhadores ao mesmo tempo: os excedentes não são exibidos no 3D (limite do pool de avatares).', 'alert'); } continue; }
+          if (!w) { semVaga++; if (!avisouVaga) { avisouVaga = true; logEvent('Mais de ' + POOL_N + ' trabalhadores ao mesmo tempo: os excedentes nÃ£o sÃ£o exibidos no 3D (limite do pool de avatares).', 'alert'); } continue; }
           slotPorId.set(m.id, w); w.liveId = m.id; w.name = 'ID ' + m.id; w.label.userData.redraw(w.name);
           w.hist.length = 0; w.invasions = 0; w.inRisk = false; w.live = true; w.path = null;
           if (w.totem) { w.totem.pts.length = 0; w.totem.key = ''; }
@@ -1896,7 +1908,7 @@
           w.semPos = false;
           w.liveX = Math.max(-WW / 2 + 0.25, Math.min(WW / 2 - 0.25, m.position.x)); w.liveZ = Math.max(-WH / 2 + 0.25, Math.min(WH / 2 - 0.25, m.position.z));
           if (!w.active) { w.active = true; w.g.visible = true; w.x = w.liveX; w.z = w.liveZ; w.tx = w.x; w.tz = w.z; w.tracked = true; w.lastSeenT = t; w.g.position.set(w.x, 0, w.z); }
-        } else if (m.image && m.image.foot) {                      // só caixa na imagem: projetar via homografia câmera→planta
+        } else if (m.image && m.image.foot) {                      // sÃ³ caixa na imagem: projetar via homografia cÃ¢meraâ†’planta
           const pp = projImgParaPlano(m.image.foot[0], m.image.foot[1], activeCam);
           if (pp) {
             w.semPos = false;
@@ -1906,13 +1918,13 @@
             sp++; w.semPos = true;
             if (w.active) { w.active = false; w.g.visible = false; }
           }
-        } else {                                                    // nem posição nem imagem
+        } else {                                                    // nem posiÃ§Ã£o nem imagem
           sp++; w.semPos = true;
           if (w.active) { w.active = false; w.g.visible = false; }
         }
       }
       semPosicao = sp;
-      if (sp && !avisouPosicao) { avisouPosicao = true; logEvent('Chegaram trilhas sem posição na planta (só caixa na imagem). Elas contam como pessoas, mas só aparecem no 3D depois da calibração câmera→planta.', 'alert'); }
+      if (sp && !avisouPosicao) { avisouPosicao = true; logEvent('Chegaram trilhas sem posiÃ§Ã£o na planta (sÃ³ caixa na imagem). Elas contam como pessoas, mas sÃ³ aparecem no 3D depois da calibraÃ§Ã£o cÃ¢meraâ†’planta.', 'alert'); }
     }
     function liveStep(w, dt, t) {
       if (w.liveId != null && t - w.lastMsgT > AUSENTE_S) { liberar(w); return; }       // trilha sumiu do detector
@@ -1924,15 +1936,15 @@
       w.inner.position.y = w.moving ? Math.abs(Math.sin(t * 9 + w.speed)) * 0.07 : 0;
     }
 
-    // Canal 1: socket do próprio painel (WebUI do Arduino App Lab). O módulo tela_gemeo.js repassa as mensagens "telemetria_gemeo".
+    // Canal 1: socket do prÃ³prio painel (WebUI do Arduino App Lab). O mÃ³dulo tela_gemeo.js repassa as mensagens "telemetria_gemeo".
     ponte.receber = (p) => { if (liveMode && fonte.estado().canal === 'painel') fonte.receber(p); };
     ponte.canalConectou = (sim) => { ponte.conectado = sim; if (liveMode) fonte.canalConectou(sim); };
-    ponte.parar = () => { if (liveMode) voltarSimulacao('Gêmeo 3D: sessão encerrada; voltando ao modo simulação.'); };
+    ponte.parar = () => { if (liveMode) voltarSimulacao('GÃªmeo 3D: sessÃ£o encerrada; voltando ao modo simulaÃ§Ã£o.'); };
     $('wsPainel').addEventListener('click', () => { entrarReal(() => fonte.usarCanal('painel', ponte.conectado)); openPanel(false); });
-    // Canal 2 (avançado): WebSocket externo, por exemplo o servidor de testes tools/ws_teste_gemeo.py.
+    // Canal 2 (avanÃ§ado): WebSocket externo, por exemplo o servidor de testes tools/ws_teste_gemeo.py.
     function wsConnect() {
       const url = wsUrl.value.trim();
-      if (!/^wss?:\/\//i.test(url)) { setStatus('Use um endereço que comece com ws:// ou wss://.', 'bad'); return; }
+      if (!/^wss?:\/\//i.test(url)) { setStatus('Use um endereÃ§o que comece com ws:// ou wss://.', 'bad'); return; }
       entrarReal(() => fonte.conectarWS(url)); openPanel(false);
     }
     wsBtn.addEventListener('click', () => openPanel(wsPanel.hidden));
@@ -1944,7 +1956,7 @@
     document.addEventListener('pointerdown', (e) => { if (!wsPanel.hidden && !wsPanel.contains(e.target) && !wsBtn.contains(e.target)) openPanel(false); });
     renderFonte();
 
-    // ---------- Câmera Orbital ----------
+    // ---------- CÃ¢mera Orbital ----------
     const HOME = { theta: -0.35, phi: 0.92, r: 36 };
     let tTheta = HOME.theta, tPhi = HOME.phi, tR = HOME.r, theta = tTheta, phi = tPhi, rad = tR;
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
@@ -1989,10 +2001,10 @@
     window.addEventListener('resize', resize);
     resize();
 
-    // ---------- Laço Principal ----------
+    // ---------- LaÃ§o Principal ----------
     const clock = new THREE.Clock();
     let uiAcc = 1, cctvAcc = 1, trackAcc = 1;
-    // Desempenho: 30 quadros/s com a cena em movimento; 6 quadros/s quando está parada (sem operário ativo, câmera assentada, sem edição).
+    // Desempenho: 30 quadros/s com a cena em movimento; 6 quadros/s quando estÃ¡ parada (sem operÃ¡rio ativo, cÃ¢mera assentada, sem ediÃ§Ã£o).
     const FPS_ATIVO = 30, FPS_OCIOSO = 6;
     let ultimoDesenho = 0, dtAcum = 0;
     const perf = { quadros: 0, desde: performance.now(), fps: 0, ms: 0, ocioso: false };
@@ -2001,10 +2013,10 @@
     };
     function frame(agora) {
       requestAnimationFrame(frame);
-      if (document.hidden || !viewer.offsetParent) { clock.getDelta(); dtAcum = 0; return; }   // aba Gêmeo 3D fechada: não simula nem desenha
+      if (document.hidden || !viewer.offsetParent) { clock.getDelta(); dtAcum = 0; return; }   // aba GÃªmeo 3D fechada: nÃ£o simula nem desenha
       const parado = !workers.some((w) => w.active) && Math.abs(tTheta - theta) + Math.abs(tPhi - phi) + Math.abs(tR - rad) < 1e-3 && extrudeProgress >= 1 && !paint.on && !calibState.on && !rpl.group;
       const alvo = 1000 / (parado ? FPS_OCIOSO : FPS_ATIVO);
-      if (agora - ultimoDesenho < alvo - 2) return;                                        // pula o quadro: o relógio acumula e o próximo dt compensa
+      if (agora - ultimoDesenho < alvo - 2) return;                                        // pula o quadro: o relÃ³gio acumula e o prÃ³ximo dt compensa
       ultimoDesenho = agora; perf.ocioso = parado;
       const ini = performance.now();
       if (liveMode) { const q = fonte.consumir(); if (q) aplicarQuadro(q); }
@@ -2012,7 +2024,7 @@
       theta += (tTheta - theta) * 0.18; phi += (tPhi - phi) * 0.18; rad += (tR - rad) * 0.18;
       placeCamera();
 
-      // Animação suave de extrusão 2D -> 3D
+      // AnimaÃ§Ã£o suave de extrusÃ£o 2D -> 3D
       if (extrudeProgress < 1) {
         extrudeProgress = Math.min(1, extrudeProgress + dt * 2.4);
         const ease = 1 - Math.pow(1 - extrudeProgress, 3);
@@ -2030,8 +2042,8 @@
         const now = (liveMode && w.liveRisk !== null) ? w.liveRisk : riskGrid[toRow(w.z) * COLS + toCol(w.x)] === 1;
         if (now !== w.inRisk) {
           w.inRisk = now; changed = true;
-          if (now) { w.invasions++; logEvent(w.name + ' entrou em área de risco (X ' + f1(w.x) + ' · Z ' + f1(w.z) + ').', 'alert'); }
-          else logEvent(w.name + ' saiu da área de risco.', 'ok');
+          if (now) { w.invasions++; logEvent(w.name + ' entrou em Ã¡rea de risco (X ' + f1(w.x) + ' Â· Z ' + f1(w.z) + ').', 'alert'); }
+          else logEvent(w.name + ' saiu da Ã¡rea de risco.', 'ok');
         }
         w.hat.visible = w.temCapacete;
         w.vest.visible = w.temColete;
@@ -2056,10 +2068,10 @@
       sampleConformity(dt);
       uiAcc += dt;
       if (changed || uiAcc > 0.15) { uiAcc = 0; refreshUI(); }
-      // Só as paredes/pilares/vergas projetam sombra e eles são estáticos: o mapa de sombras só é refeito quando a estrutura muda ou durante a extrusão.
+      // SÃ³ as paredes/pilares/vergas projetam sombra e eles sÃ£o estÃ¡ticos: o mapa de sombras sÃ³ Ã© refeito quando a estrutura muda ou durante a extrusÃ£o.
       if (shadowDirty || extrudeProgress < 1) { renderer.shadowMap.needsUpdate = true; shadowDirty = extrudeProgress < 1; }
       cctvAcc += dt;
-      if (cctvAcc >= 1 / 12 && $('pip').dataset.size !== 'min') { cctvAcc = 0; renderCctv(t); }   // monitor minimizado não precisa do segundo desenho
+      if (cctvAcc >= 1 / 12 && $('pip').dataset.size !== 'min') { cctvAcc = 0; renderCctv(t); }   // monitor minimizado nÃ£o precisa do segundo desenho
       renderer.setScissorTest(false); renderer.setViewport(0, 0, mainW, mainH);
       renderer.render(scene, camera);
       perf.quadros++; perf.ms = perf.ms * 0.9 + (performance.now() - ini) * 0.1;
@@ -2075,7 +2087,7 @@
     };
   }
 
-  // ---------- Seletor de Câmeras ----------
+  // ---------- Seletor de CÃ¢meras ----------
   const camCtx = $('camLayer').getContext('2d');
   function drawCamLayer() {
     const g = camCtx, CW = 640, CH = 480, kx = CW / WW, kz = CH / WH;
@@ -2112,16 +2124,16 @@
     activeCam = i;
     document.querySelectorAll('.camb').forEach((b) => b.setAttribute('aria-pressed', String(+b.dataset.cam === i)));
     const d = CAMS[i];
-    $('cctvTag').textContent = d.name + ' · ' + d.sector; $('cctvCam').textContent = d.name; $('cctvSector').textContent = d.sector + (d.ptz ? ' · PTZ' : '');
+    $('cctvTag').textContent = d.name + ' Â· ' + d.sector; $('cctvCam').textContent = d.name; $('cctvSector').textContent = d.sector + (d.ptz ? ' Â· PTZ' : '');
     drawCamLayer();
     if (twin) twin.onCamChange();
-    if (!silent) logEvent('Câmera ativa: ' + d.name + ' (' + d.sector + ').');
+    if (!silent) logEvent('CÃ¢mera ativa: ' + d.name + ' (' + d.sector + ').');
   }
   ['camselA', 'camselB'].forEach((id) => {
     CAMS.forEach((d, i) => {
       const b = document.createElement('button');
       b.type = 'button'; b.className = 'camb'; b.dataset.cam = String(i); b.textContent = '[' + d.name + ']';
-      b.setAttribute('aria-pressed', 'false'); b.setAttribute('aria-label', 'Câmera ' + d.id + ', ' + d.sector);
+      b.setAttribute('aria-pressed', 'false'); b.setAttribute('aria-label', 'CÃ¢mera ' + d.id + ', ' + d.sector);
       b.addEventListener('click', () => setCam(i));
       $(id).appendChild(b);
     });
@@ -2132,19 +2144,21 @@
     if (k >= 0 && $('viewer').offsetParent) setCam(k);
   });
 
-  // ---------- Inicialização ----------
+  // ---------- InicializaÃ§Ã£o ----------
   drawSample();
   try {
-    if (typeof THREE === 'undefined') throw new Error('Three.js não carregou');
+    if (typeof THREE === 'undefined') throw new Error('Three.js nÃ£o carregou');
     twin = initTwin();
   } catch (err) {
     const msg = document.createElement('div');
     msg.className = 'nowebgl';
-    msg.textContent = 'O visualizador 3D não pôde iniciar (' + err.message + '). A leitura da planta continua funcionando.';
+    msg.textContent = 'O visualizador 3D nÃ£o pÃ´de iniciar (' + err.message + '). A leitura da planta continua funcionando.';
     $('viewer').appendChild(msg);
     $('paintBtn').disabled = true; $('calibBtn').disabled = true;
-    setBanner('idle', 'Visualizador 3D indisponível', 'WebGL ou Three.js não foram carregados neste navegador.');
+    setBanner('idle', 'Visualizador 3D indisponÃ­vel', 'WebGL ou Three.js nÃ£o foram carregados neste navegador.');
   }
   setCam(0, true);
   processPlan('Planta de exemplo extrudada em BIM 3D');
 })();
+
+

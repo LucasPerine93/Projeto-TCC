@@ -591,6 +591,12 @@ def operario_detectado(specs_frame, frame=None):
     6735581) o fluxo continua, mas nenhuma foto e persistida.
     """
     try:
+        # Atualiza o buffer do ultimo frame para o endpoint /snapshot
+        if frame is not None:
+            try:
+                servidor.atualizar_ultimo_frame(frame)
+            except Exception:
+                pass  # nao pode quebrar o callback da camera
         return organizar_dado(specs_frame, servidor.box_risco, servidor.risco, frame)
     except Exception as exc:
         _registrar_falha(f"callback de deteccao falhou: {exc!r}")
