@@ -49,6 +49,13 @@ class Operario:
     # Nao identifica a pessoa de forma permanente.
     track_id: int | None = None
 
+    # Posição no mundo (metros, origem no centro do galpão), projetada a partir
+    # do ponto dos pés (centro horizontal da caixa, base vertical) pela
+    # homografia H da calibração ativa. None quando não há calibração válida.
+    pos_x_m: float | None = None
+    pos_z_m: float | None = None
+    celula_idx: int | None = None
+
 
 # Faixa vertical do corpo (fração da altura da caixa da pessoa, medida a
 # partir do topo) onde cada EPI deve ter o seu centro.
@@ -150,6 +157,169 @@ def _get_pessoa(specs_frame: dict) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
+# Projeção do ponto dos pés para a planta do gêmeo 3D (Etapa 3)
+# ---------------------------------------------------------------------------
+PLANTA_LARGURA_M = 40.0
+PLANTA_ALTURA_M = 30.0
+MAPA_COLUNAS = 80
+MAPA_LINHAS = 60
+CELULA_M = 0.5
+# Resolução do frame em que o detector trabalha (fonte dos dados de entrada)
+FRAME_DETECTOR_W, FRAME_DETECTOR_H = 720, 480
+
+
+def projetar_pe_para_planta(box_xyxy, calibracao):
+    """Projeta o ponto dos pés de uma caixa para coordenadas da planta.
+
+    Retorna ``(x_m, z_m, celula_idx)`` ou ``(None, None, None)`` quando a
+    calibração é inválida/ausente ou o ponto cai fora da planta.
+    """
+    if not box_xyxy or not isinstance(box_xyxy, (list, tuple)) or len(box_xyxy) != 4:
+        return None, None, None
+    H = (calibracao or {}).get("H")
+    if not H or len(H) != 3:
+        return None, None, None
+    try:
+        x1, y1, x2, y2 = (float(v) for v in box_xyxy)
+        u = (x1 + x2) / 2.0
+        v = y2
+        # Normaliza para o frame em que a H foi calculada (padrão: 720x480)
+        frame = (calibracao or {}).get("frame") or {"w": FRAME_DETECTOR_W, "h": FRAME_DETECTOR_H}
+        fw = float(frame.get("w", FRAME_DETECTOR_W) or FRAME_DETECTOR_W)
+        fh = float(frame.get("h", FRAME_DETECTOR_H) or FRAME_DETECTOR_H)
+        u_cal = u * (fw / FRAME_DETECTOR_W)
+        v_cal = v * (fh / FRAME_DETECTOR_H)
+        # Homografia 3x3 (px, py da planta 320x240) com normalização em w
+        px = H[0][0] * u_cal + H[0][1] * v_cal + H[0][2]
+        py = H[1][0] * u_cal + H[1][1] * v_cal + H[1][2]
+        den = H[2][0] * u_cal + H[2][1] * v_cal + H[2][2]
+        if abs(den) < 1e-9:
+            return None, None, None
+        px /= den
+        py /= den
+        x_m = (px / 320.0) * PLANTA_LARGURA_M - PLANTA_LARGURA_M / 2.0
+        z_m = (py / 240.0) * PLANTA_ALTURA_M - PLANTA_ALTURA_M / 2.0
+        col = int((x_m + PLANTA_LARGURA_M / 2.0) / CELULA_M)
+        row = int((z_m + PLANTA_ALTURA_M / 2.0) / CELULA_M)
+        col = max(0, min(MAPA_COLUNAS - 1, col))
+        row = max(0, min(MAPA_LINHAS - 1, row))
+        return round(x_m, 3), round(z_m, 3), row * MAPA_COLUNAS + col
+    except (TypeError, ValueError, IndexError, ZeroDivisionError):
+        return None, None, None
+
+
+def _obter_calibracao():
+    """Lê a calibração ativa em disco (sem cache para não servir H velha)."""
+    try:
+        return servidor._ler_calibracao()
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Buffer circular de trajetória (Etapa 4 — replay real)
+# ---------------------------------------------------------------------------
+_TRAJETORIA_BUFFER = {}        # track_id -> deque(maxlen=30) de pontos
+_ULTIMA_AMOSTRA_TRAJETORIA = {}  # track_id -> monotonic
+_TRILHA_EM_EVENTO = {}         # track_id -> {"ocorrencia_id": int, "t_inicio": ms}
+_ULTIMA_AMOSTRA_EXPOSICAO = None
+_FLUSH_EXPOSICAO = 0.0
+_ACUMULADO_EXPOSICAO = {}      # celula_idx -> [presenca_s, infracao_s, eventos]
+
+
+def _ponto_trajetoria(op):
+    return {
+        "t_ms": int(time.monotonic() * 1000),
+        "x_m": op.pos_x_m,
+        "z_m": op.pos_z_m,
+        "helmet": 1 if op.tem_capacete else 0,
+        "vest": 1 if op.tem_colete else 0,
+        "in_risk": 1 if op.risco_detectado else 0,
+    }
+
+
+def _amostrar_trajetoria(lista_operarios):
+    """Amostra pontos de trajetória a no máximo 2 Hz (0.5 s), buffer de 30."""
+    if not lista_operarios:
+        return
+    agora = time.monotonic()
+    for op in lista_operarios:
+        if getattr(op, "track_id", None) is None or op.pos_x_m is None or op.pos_z_m is None:
+            continue
+        ultima = _ULTIMA_AMOSTRA_TRAJETORIA.get(op.track_id, 0.0)
+        if agora - ultima < 0.5:
+            continue
+        _ULTIMA_AMOSTRA_TRAJETORIA[op.track_id] = agora
+        ponto = _ponto_trajetoria(op)
+        buffer = _TRAJETORIA_BUFFER.setdefault(op.track_id, [])
+        buffer.append(ponto)
+        if len(buffer) > 30:
+            buffer.pop(0)
+        # Enquanto a trajetória está vinculada a um evento, os pontos novos
+        # já vão direto ao banco (janela de +15 s após a ocorrência).
+        evento = _TRILHA_EM_EVENTO.get(op.track_id)
+        if evento and (ponto["t_ms"] - evento["t_inicio"]) <= 15000:
+            try:
+                banco.salvar_pontos_trajetoria(evento["ocorrencia_id"], [ponto])
+            except Exception as exc:
+                _registrar_falha(f"falha ao salvar ponto de trajetoria: {exc!r}")
+        elif evento:
+            _TRILHA_EM_EVENTO.pop(op.track_id, None)
+
+
+def _vincular_trilha(track_id, ocorrencia_id):
+    """Persiste o buffer recém-amostrado e marca a trilha como em evento."""
+    pontos = list(_TRAJETORIA_BUFFER.get(track_id, []))
+    if pontos:
+        try:
+            banco.salvar_pontos_trajetoria(ocorrencia_id, pontos)
+        except Exception as exc:
+            _registrar_falha(f"falha ao salvar buffer de trajetoria: {exc!r}")
+    # Os pontos do buffer já estão gravados; limpá-lo evita gravar os mesmos
+    # pontos de novo caso a mesma trilha gere outra ocorrência depois do cooldown.
+    _TRAJETORIA_BUFFER[track_id] = []
+    _TRILHA_EM_EVENTO[track_id] = {"ocorrencia_id": ocorrencia_id, "t_inicio": int(time.monotonic() * 1000)}
+
+
+def _acumular_exposicao(lista_operarios):
+    """Acumula presença/infração por célula e descarrega a cada ~1 s."""
+    global _ULTIMA_AMOSTRA_EXPOSICAO, _FLUSH_EXPOSICAO
+    agora = time.monotonic()
+    if _ULTIMA_AMOSTRA_EXPOSICAO is None:
+        _ULTIMA_AMOSTRA_EXPOSICAO = agora
+        return
+    dt = min(2.0, max(0.0, agora - _ULTIMA_AMOSTRA_EXPOSICAO))
+    _ULTIMA_AMOSTRA_EXPOSICAO = agora
+    if dt <= 0:
+        return
+    for op in lista_operarios:
+        if op.celula_idx is None:
+            continue
+        acc = _ACUMULADO_EXPOSICAO.setdefault(op.celula_idx, [0.0, 0.0, 0])
+        acc[0] += dt
+        if classificar_infracao(op):
+            acc[1] += dt
+    if agora - _FLUSH_EXPOSICAO >= 1.0:
+        _flush_exposicao(agora)
+
+
+def _flush_exposicao(agora=None):
+    """Grava o acumulado de exposição por célula no banco (se houver dados)."""
+    global _ACUMULADO_EXPOSICAO, _FLUSH_EXPOSICAO
+    agora = agora if agora is not None else time.monotonic()
+    if not _ACUMULADO_EXPOSICAO:
+        _FLUSH_EXPOSICAO = agora
+        return
+    incrementos = dict(_ACUMULADO_EXPOSICAO)
+    _ACUMULADO_EXPOSICAO = {}
+    _FLUSH_EXPOSICAO = agora
+    try:
+        banco.registrar_exposicao_celulas(incrementos)
+    except Exception as exc:
+        _registrar_falha(f"falha ao registrar exposicao: {exc!r}")
+
+
+# ---------------------------------------------------------------------------
 # Pipeline principal
 # ---------------------------------------------------------------------------
 def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame=None):
@@ -192,9 +362,22 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
             if verificar_area_risco(box_area_risco, operario.box_xyxy):
                 operario.risco_detectado = True
 
+    # Projeção do ponto dos pés para a planta (Etapa 3) — sem calibração
+    # válida os campos ficam None e o banco grava NULL.
+    calibracao = _obter_calibracao()
+    if calibracao:
+        for operario in lista_operarios:
+            x_m, z_m, idx = projetar_pe_para_planta(operario.box_xyxy, calibracao)
+            operario.pos_x_m, operario.pos_z_m, operario.celula_idx = x_m, z_m, idx
+
     _executar_seguro("analisar_seguranca", analisar_seguranca, lista_operarios)
     trilhas_antes = _proximo_track_id
     _executar_seguro("filtrar_salvamento", filtrar_salvamento, lista_operarios, frame)
+    # Amostra o buffer de trajetória a no máximo 2 Hz e persiste os pontos
+    # de trilhas já vinculadas a um evento (Etapa 4)
+    _executar_seguro("trajetoria", _amostrar_trajetoria, lista_operarios)
+    # Acumula presença/infração por célula para o mapa de calor (Etapa 5)
+    _executar_seguro("exposicao", _acumular_exposicao, lista_operarios)
     # filtrar_salvamento atribui as trilhas; só então o payload contém o
     # track_id efêmero junto de caixas, EPIs, confiança e risco consolidados.
     _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
@@ -504,7 +687,7 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
     """
     agora = time.time()
     if not lista_de_operarios:
-        return
+        return []
 
     associar_trilhas(lista_de_operarios, agora)
 
@@ -522,12 +705,12 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
         aprovados.append((operario, tipo))
 
     if not aprovados:
-        return
+        return []
 
     # Lib antiga / stubs de teste: sem frame nao ha foto para persistir,
     # mas o restante do fluxo (trilhas, cooldown) continua.
     if frame is None:
-        return
+        return []
 
     registros = [
         {
@@ -538,14 +721,22 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
             "conf_colete": _to_float(operario.conf_colete, None),
             "box_capacete": list(operario.box_capacete) if operario.box_capacete else None,
             "box_colete": list(operario.box_colete) if operario.box_colete else None,
+            "x_m": operario.pos_x_m,
+            "z_m": operario.pos_z_m,
+            "celula_idx": operario.celula_idx,
         }
         for operario, tipo in aprovados
     ]
 
     salvos = banco.salvar_cena(frame, registros, montar_cena(lista_de_operarios))
 
-    # So marca o cooldown do que realmente chegou ao banco.
+    # Vincula a trilha de cada trabalhador salvo à ocorrência correspondente;
+    # a trajetória persiste junto com a evidência e o mapa de calor acumulado
+    # é descarregado neste mesmo ciclo (Etapas 4 e 5).
     if salvos:
+        for (operario, tipo), ocorrencia_id in zip(aprovados, salvos):
+            _vincular_trilha(operario.track_id, ocorrencia_id)
+        _flush_exposicao()
         for operario, tipo in aprovados:
             _ultima_ocorrencia[(operario.track_id, tipo)] = agora
 
@@ -553,6 +744,8 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
     for chave in list(_ultima_ocorrencia.keys()):
         if (agora - _ultima_ocorrencia[chave]) > (TEMPO_ESPERA_SALVAR * 3):
             del _ultima_ocorrencia[chave]
+
+    return salvos
 
 # ---------------------------------------------------------------------------
 # Geometria

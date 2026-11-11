@@ -96,6 +96,13 @@ def resetar_estado():
     detector.ultimo_alerta = 0.0
     servidor._ui_telemetria_ultimo = 0.0
     servidor._telemetria_sequencia = 0
+    # Estado dos buffers de trajetoria/exposicao (Etapas 4 e 5)
+    detector._TRAJETORIA_BUFFER.clear()
+    detector._ULTIMA_AMOSTRA_TRAJETORIA.clear()
+    detector._TRILHA_EM_EVENTO.clear()
+    detector._ACUMULADO_EXPOSICAO.clear()
+    detector._ULTIMA_AMOSTRA_EXPOSICAO = None
+    detector._FLUSH_EXPOSICAO = 0.0
 
 
 class TestTelemetriaGemeo(unittest.TestCase):
@@ -338,6 +345,218 @@ class TestPontaAPonta(unittest.TestCase):
                 mock.patch.object(detector.servidor, "risco", False):
             detector.operario_detectado(self._specs(), None)  # lib antiga: sem foto
         self.assertFalse(os.path.exists(banco.PASTA_FOTOS))
+
+
+# ---------------------------------------------------------------------------
+# Novas verificações (Etapas 3 a 5 do Plano de Evolução)
+# ---------------------------------------------------------------------------
+
+class TestProjecaoPlanta(unittest.TestCase):
+    """Etapa 3: projeção do ponto dos pés para a planta via homografia."""
+
+    def _calib(self, H, frame=None):
+        return {"camId": "1A", "H": H, "frame": frame or {"w": 720, "h": 480}}
+
+    def test_identidade_centro_da_planta(self):
+        # pés no centro horizontal e vertical baixo: u=200, v=120 (na H identidade)
+        # px=200, py=120 na planta 320x240 -> x_m=5.0, z_m=0.0
+        x_m, z_m, idx = detector.projetar_pe_para_planta((0, 0, 400, 120), self._calib([[1, 0, 0], [0, 1, 0], [0, 0, 1]]))
+        self.assertAlmostEqual(x_m, 5.0, places=5)
+        self.assertAlmostEqual(z_m, 0.0, places=5)
+        self.assertEqual(idx, 30 * 80 + 50)  # row 30, col 50
+
+    def test_escala_da_homografia(self):
+        H = [[0.8, 0, 0], [0, 0.8, 0], [0, 0, 1]]
+        x_m, z_m, idx = detector.projetar_pe_para_planta((0, 0, 400, 120), self._calib(H))
+        # px=160, py=96 -> x_m=0.0, z_m=-3.0
+        self.assertAlmostEqual(x_m, 0.0, places=5)
+        self.assertAlmostEqual(z_m, -3.0, places=5)
+        self.assertEqual(idx, 24 * 80 + 40)  # row 24, col 40
+
+    def test_frame_da_calibracao(self):
+        # com o frame da calibração em 360x240 o detector é escalado 0.5x antes da H
+        H = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+        x_m, z_m, idx = detector.projetar_pe_para_planta((0, 0, 200, 60), self._calib(H, frame={"w": 360, "h": 240}))
+        self.assertAlmostEqual(x_m, -13.75, places=5)   # px=50 -> (50/320)*40-20 = -13.75
+        self.assertAlmostEqual(z_m, -11.25, places=5)  # py=30 -> (30/240)*30-15 = -11.25
+        self.assertEqual(idx, 7 * 80 + 12)  # row 7, col 12
+
+    def test_calib_invalida_ou_ausente(self):
+        self.assertEqual(detector.projetar_pe_para_planta((0, 0, 400, 120), None), (None, None, None))
+        self.assertEqual(detector.projetar_pe_para_planta((0, 0, 400, 120), {"H": [[1, 0, 0]]}), (None, None, None))
+        self.assertEqual(detector.projetar_pe_para_planta((0, 0, 400, 120), {"H": "lixo"}), (None, None, None))
+        self.assertEqual(detector.projetar_pe_para_planta(None, self._calib([[1, 0, 0], [0, 1, 0], [0, 0, 1]])), (None, None, None))
+
+
+class TestEspacialBanco(unittest.TestCase):
+    """Etapa 3: migração das colunas x_m/z_m/celula_idx e leitura via SELECT."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        p = mock.patch.multiple(
+            banco,
+            CAMINHO_PENDRIVE=self.tmp.name,
+            CAMINHO_BANCO=os.path.join(self.tmp.name, "banco.db"),
+            PASTA_FOTOS=os.path.join(self.tmp.name, "evidencias"),
+        )
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(self.tmp.cleanup)
+        v = mock.patch.object(banco, "verificar_pendrive", return_value=True)
+        v.start()
+        self.addCleanup(v.stop)
+
+    def test_migracao_adiciona_colunas_e_tabelas(self):
+        banco.inicializar_banco(banco.CAMINHO_BANCO)
+        con = sqlite3.connect(banco.CAMINHO_BANCO)
+        try:
+            colunas = {r[1] for r in con.execute("PRAGMA table_info(ocorrencias)")}
+            self.assertIn("x_m", colunas)
+            self.assertIn("z_m", colunas)
+            self.assertIn("celula_idx", colunas)
+            tabelas = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            self.assertIn("trajetoria", tabelas)
+            self.assertIn("exposicao_celula", tabelas)
+        finally:
+            con.close()
+
+    def test_salvar_cena_e_ler_posicao(self):
+        registros = [{
+            "tipo_infracao": "Sem capacete",
+            "posicao_operario": [10, 20, 30, 80],
+            "conf_pessoa": 0.9,
+            "conf_capacete": None,
+            "conf_colete": None,
+            "box_capacete": None,
+            "box_colete": None,
+            "x_m": 5.5,
+            "z_m": -2.25,
+            "celula_idx": 1234,
+        }]
+        ids = banco.salvar_cena(b"\xff\xd8jpg\xff\xd9", registros, [])
+        self.assertEqual(len(ids), 1)
+        ocorrencias = banco.dados_ocorrencias()
+        self.assertEqual(len(ocorrencias), 1)
+        self.assertAlmostEqual(ocorrencias[0]["x_m"], 5.5)
+        self.assertAlmostEqual(ocorrencias[0]["z_m"], -2.25)
+        self.assertEqual(ocorrencias[0]["celula_idx"], 1234)
+
+
+class TestTrajetoriaEMapaCalor(unittest.TestCase):
+    """Etapas 4 e 5: trajetória por ocorrência e mapa de calor por célula."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        p = mock.patch.multiple(
+            banco,
+            CAMINHO_PENDRIVE=self.tmp.name,
+            CAMINHO_BANCO=os.path.join(self.tmp.name, "banco.db"),
+            PASTA_FOTOS=os.path.join(self.tmp.name, "evidencias"),
+        )
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(self.tmp.cleanup)
+        v = mock.patch.object(banco, "verificar_pendrive", return_value=True)
+        v.start()
+        self.addCleanup(v.stop)
+        # cria o arquivo de banco para que os helpers não o tratem como ausente
+        banco.inicializar_banco(banco.CAMINHO_BANCO)
+
+    def _criar_ocorrencia(self):
+        registros = [{
+            "tipo_infracao": "Sem capacete",
+            "posicao_operario": [10, 20, 30, 80],
+            "conf_pessoa": 0.9,
+            "conf_capacete": None,
+            "conf_colete": None,
+            "box_capacete": None,
+            "box_colete": None,
+            "x_m": 1.0,
+            "z_m": 2.0,
+            "celula_idx": 10,
+        }]
+        ids = banco.salvar_cena(b"\xff\xd8jpg\xff\xd9", registros, [])
+        self.assertTrue(ids)
+        return ids[0]
+
+    def test_salvar_e_ler_trajetoria_via_rota(self):
+        id_ocorrencia = self._criar_ocorrencia()
+        pontos = [
+            {"t_ms": 3000, "x_m": 1.0, "z_m": 2.0, "helmet": 0, "vest": 1, "in_risk": 0, "fonte": "real"},
+            {"t_ms": 1000, "x_m": 1.1, "z_m": 2.1, "helmet": 0, "vest": 1, "in_risk": 0, "fonte": "real"},
+        ]
+        self.assertTrue(banco.salvar_pontos_trajetoria(id_ocorrencia, pontos))
+
+        resposta = servidor._trajetoria_ocorrencia(id_ocorrencia)
+        self.assertEqual(resposta["ocorrencia_id"], id_ocorrencia)
+        # ordenado por t_ms
+        self.assertEqual([p["t_ms"] for p in resposta["pontos"]], [1000, 3000])
+        self.assertEqual(resposta["pontos"][0]["x_m"], 1.1)
+        self.assertEqual(resposta["pontos"][0]["helmet"], False)
+
+    def test_trajetoria_rota_id_invalido(self):
+        resposta = servidor._trajetoria_ocorrencia("abc")
+        # handlers expõe (dict, status) no estilo WebUI do app
+        self.assertEqual(resposta[1], 400)
+        self.assertIn("erro", resposta[0])
+
+    def test_mapa_calor_via_rota(self):
+        ok = banco.registrar_exposicao_celulas({42: (10.0, 2.0, 1)})
+        self.assertTrue(ok)
+        ok = banco.registrar_exposicao_celulas({42: (10.0, 6.0, 2)})
+        self.assertTrue(ok)
+
+        resposta = servidor._mapa_calor()
+        celulas = resposta["celulas"]
+        self.assertEqual(len(celulas), 1)
+        self.assertEqual(celulas[0]["celula_idx"], 42)
+        self.assertAlmostEqual(celulas[0]["segundos_presenca"], 20.0)
+        self.assertAlmostEqual(celulas[0]["segundos_infracao"], 8.0)
+        self.assertEqual(celulas[0]["total_eventos"], 3)
+        self.assertAlmostEqual(celulas[0]["taxa_infracao"], 0.4)
+
+    def test_mapa_calor_sem_banco(self):
+        # sem arquivo de banco: mapa vazio, sem exceção
+        self.assertEqual(banco.obter_mapa_calor(), [])
+
+    def test_limpar_trajetoria_antiga(self):
+        id_ocorrencia = self._criar_ocorrencia()
+        banco.salvar_pontos_trajetoria(id_ocorrencia, [
+            {"t_ms": 1000, "x_m": 0.0, "z_m": 0.0, "helmet": 0, "vest": 0, "in_risk": 0},
+        ])
+        self.assertEqual(len(banco.obter_trajetoria(id_ocorrencia)), 1)
+        # ocorrência recente não é apagada
+        self.assertEqual(banco.limpar_trajetoria_antiga(90), 0)
+        self.assertEqual(len(banco.obter_trajetoria(id_ocorrencia)), 1)
+
+
+class TestTelemetriaComPosicao(unittest.TestCase):
+    """Etapa 3: o payload de telemetria carrega a posição na planta quando projetada."""
+
+    def setUp(self):
+        resetar_estado()
+
+    def test_payload_com_posicao_na_planta(self):
+        operario = detector.Operario(
+            box_xyxy=(10, 20, 30, 80),
+            tem_colete=True,
+            tem_capacete=True,
+            risco_detectado=False,
+            conf_pessoa=0.96,
+            conf_capacete=0.91,
+            conf_colete=0.88,
+            track_id=9,
+            pos_x_m=5.5,
+            pos_z_m=-2.25,
+            celula_idx=1234,
+        )
+        with mock.patch.object(servidor.ui, "send_message") as enviar, \
+                mock.patch.object(servidor.time, "time", side_effect=[100.0]):
+            self.assertTrue(servidor.enviar_telemetria([operario]))
+
+        canal, payload = enviar.call_args_list[0].args
+        self.assertEqual(canal, "telemetria_gemeo")
+        self.assertEqual(payload["workers"][0]["position"], {"x": 5.5, "z": -2.25})
 
 
 if __name__ == "__main__":

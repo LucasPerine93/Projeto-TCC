@@ -132,7 +132,7 @@ def enviar_telemetria(operarios):
         if operario.track_id is None:
             continue
 
-        workers.append({
+        dados = {
             "id": str(operario.track_id),
             "bbox": list(operario.box_xyxy),
             "ppe": {
@@ -145,7 +145,11 @@ def enviar_telemetria(operarios):
                 "vest": operario.conf_colete,
             },
             "inRisk": bool(operario.risco_detectado),
-        })
+        }
+        # Posição na planta (metros, origem no centro) — Etapa 3: só quando há calibração
+        if getattr(operario, "pos_x_m", None) is not None and getattr(operario, "pos_z_m", None) is not None:
+            dados["position"] = {"x": operario.pos_x_m, "z": operario.pos_z_m}
+        workers.append(dados)
 
     ui.send_message("telemetria_gemeo", {
         "source": "real",
@@ -220,3 +224,24 @@ def _post_calibracao(req):
 
 ui.expose_api("GET", "/calibracao", _get_calibracao)
 ui.expose_api("POST", "/calibracao", _post_calibracao)
+
+
+# ---------------------------------------------------------------------------
+# Etapas 4 e 5 do Plano de Evolucao: replay 3D de ocorrencias reais e mapa de calor
+# ---------------------------------------------------------------------------
+def _trajetoria_ocorrencia(ocorrencia_id):
+    """GET /ocorrencia/{ocorrencia_id}/trajetoria — pontos para o replay 3D de uma ocorrencia."""
+    try:
+        ocorrencia_id = int(ocorrencia_id)
+    except (TypeError, ValueError):
+        return {"erro": "id de ocorrencia invalido"}, 400
+    return {"ocorrencia_id": ocorrencia_id, "pontos": banco.obter_trajetoria(ocorrencia_id)}
+
+
+def _mapa_calor(*_args):
+    """GET /mapa_calor — mapa de calor historico com taxa de infracao por celula."""
+    return {"celulas": banco.obter_mapa_calor()}
+
+
+ui.expose_api("GET", "/ocorrencia/{ocorrencia_id}/trajetoria", _trajetoria_ocorrencia)
+ui.expose_api("GET", "/mapa_calor", _mapa_calor)

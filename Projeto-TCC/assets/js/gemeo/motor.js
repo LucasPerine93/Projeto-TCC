@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   'use strict';
 
   // ---------- Constantes de escala ----------
@@ -21,6 +21,23 @@
   const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const fmt = (n) => n.toLocaleString('pt-BR');
   const f1 = (n) => n.toFixed(1).replace('.', ',').replace('-', 'âˆ’');
+
+  // ---------- Chamadas HTTP para o backend (mesmo estilo de assets/js/api.js) ----------
+  // motor.js carrega como script clássico (não pode importar módulos), então
+  // repete aqui o cliente de mesma-origem com o cabeçalho X-Requested-With.
+  function apiJson(url, opcoes) {
+    const cfg = opcoes || {};
+    return fetch(url, {
+      method: cfg.method || 'GET',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'painel' },
+      body: cfg.corpo ? JSON.stringify(cfg.corpo) : undefined,
+      credentials: 'same-origin',
+    }).then((r) => {
+      if (r.status === 401) { window.dispatchEvent(new CustomEvent('sessao-expirada')); throw new Error('HTTP 401 em ' + url); }
+      if (!r.ok) throw new Error('HTTP ' + r.status + ' em ' + url);
+      return r.json();
+    });
+  }
 
   const plan = $('plan'), ctx = plan.getContext('2d', { willReadFrequently: true });
   const ov = $('overlay'), octx = ov.getContext('2d');
@@ -1606,7 +1623,23 @@
       heatOn = !heatOn; heatMesh.visible = heatOn;
       e.currentTarget.setAttribute('aria-pressed', String(heatOn));
       e.currentTarget.textContent = 'Mapa de calor: ' + (heatOn ? 'ligado' : 'desligado');
-      if (heatOn) drawHeat();
+      if (heatOn) {
+        drawHeat();
+        if (typeof liveMode !== 'undefined' && liveMode) {
+          apiJson('/mapa_calor').then((res) => {
+            heatGrid.fill(0);
+            const celulas = res && res.celulas ? res.celulas : [];
+            celulas.forEach((c) => {
+              const idx = Number(c.celula_idx);
+              if (idx < 0 || idx >= heatGrid.length) return;
+              const taxa = c.taxa_infracao != null ? c.taxa_infracao
+                : (c.segundos_infracao != null ? Math.min(1, c.segundos_infracao / Math.max(1, c.segundos_presenca)) : 0);
+              heatGrid[idx] = Math.max(heatGrid[idx], taxa * HEAT_MAX);
+            });
+            heatDirty = true; drawHeat();
+          }).catch(() => { /* backend indisponível: mantém o heatGrid local */ });
+        }
+      }
     });
     $('clearHeat').addEventListener('click', () => { heatGrid.fill(0); heatDirty = false; drawHeat(); logEvent('HistÃ³rico do mapa de calor zerado.'); });
 
@@ -1662,6 +1695,28 @@
       Object.assign(rpl, { group: g, pts, marker, tag, ring, t0: clock.elapsedTime, end: 0 });
       logEvent('Replay 3D: ' + trail.name + ', Ãºltimos ' + f1(Math.max(0, (n - 1) * HIST_DT)) + ' s atÃ© a ocorrÃªncia de ' + stamp + '.');
     };
+    // Ponte com a lista de ocorrências: reproduz no 3D o caminho percorrido por
+    // uma ocorrência real gravada (Etapa 4). Consome GET /ocorrencia/{id}/trajetoria.
+    window.gemeoReproduzirOcorrencia = function (ocorrenciaId) {
+      const id = Number(ocorrenciaId);
+      if (!isFinite(id)) return Promise.resolve(false);
+      return apiJson('/ocorrencia/' + id + '/trajetoria').then((res) => {
+        const pontos = (res && res.pontos) ? res.pontos : [];
+        const pts = pontos
+          .filter((p) => isFinite(Number(p.x_m)) && isFinite(Number(p.z_m)))
+          .map((p) => [Number(p.x_m), Number(p.z_m), p.in_risk ? 1 : 0]);
+        if (pts.length < 2) {
+          logEvent('Ocorrência #' + id + ': trajetória insuficiente para o replay 3D.', 'alert');
+          return false;
+        }
+        playReplay({ name: 'ocorrência #' + id, pts }, 'ocorrência #' + id);
+        return true;
+      }).catch(() => {
+        logEvent('Não foi possível carregar a trajetória da ocorrência #' + id + '.', 'alert');
+        return false;
+      });
+    };
+
     function updateReplay(t) {
       if (!rpl.group) return;
       const n = rpl.pts.length, p = Math.min(1, (t - rpl.t0) / 5), f = p * (n - 1), i = Math.min(n - 1, Math.floor(f)), u = f - i;
@@ -1875,10 +1930,12 @@
       const cal = calibs[camIdx];
       // Usa a resolucao em que a H foi calculada (cal.frame, padrao 640x480 para
       // camera virtual; 720x480 quando calibrado via /snapshot ou normalizado do detector).
+      if (!cal || !Array.isArray(cal.H) || cal.H.length !== 3) return null;
       const cf = cal && cal.frame ? cal.frame : { w: 640, h: 480 };
-      const fh = (typeof GemeoFonte !== 'undefined' && GemeoFonte.FRAME_H) ? GemeoFonte.FRAME_H : 480;
-      const uCal = u * (CV_W / fw);
-      const vCal = v * (CV_H / fh);
+      // A imagem da câmera virtual tem 640x480; a H foi calculada no frame da
+      // calibração (cf), então os pontos são escalados para esse referencial.
+      const uCal = u * (cf.w / CV_W);
+      const vCal = v * (cf.h / CV_H);
       const [px, py] = applyH(cal.H, uCal, vCal);
       if (!isFinite(px) || !isFinite(py)) return null;
       const sx = W / WW, sy = H / WH;          // 8 px/m em ambos os eixos (planta 320Ã—240 â†’ 40Ã—30 m)

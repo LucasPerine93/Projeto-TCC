@@ -41,6 +41,18 @@ def verificar_pendrive(caminho_pendrive: str) -> bool:
 COLUNAS_NOVAS = dict(config.COLUNAS_NOVAS)
 STATUS_VALIDOS = config.STATUS_VALIDOS
 
+# Novas colunas para persistência espacial (Etapa 3 do Plano de Evolução)
+# x_m, z_m: coordenadas do ponto dos pés em metros (origem centro do galpão)
+# celula_idx: índice da célula do mapa de calor 80x60
+COLUNAS_NOVAS["x_m"] = "REAL"
+COLUNAS_NOVAS["z_m"] = "REAL"
+COLUNAS_NOVAS["celula_idx"] = "INTEGER"
+
+# Novas tabelas (Etapas 4 e 5 do Plano de Evolução)
+# Tabela de trajetória: pontos amostrados ±15s a 1-2 Hz ao redor de eventos
+# Tabela de exposição por célula do mapa de calor 80x60 (Etapa 5)
+# (criadas por _garantir_tabelas; não são colunas de ocorrencias)
+
 
 def _migrar_esquema(cursor):
     """Migração leve e idempotente: acrescenta colunas que faltem em bancos antigos."""
@@ -48,6 +60,42 @@ def _migrar_esquema(cursor):
     for nome, definicao in COLUNAS_NOVAS.items():
         if nome not in existentes:
             cursor.execute(f"ALTER TABLE ocorrencias ADD COLUMN {nome} {definicao}")
+
+
+def _garantir_tabelas(cursor):
+    """Cria as tabelas auxiliares de trajetória e exposição (idempotente).
+
+    Chamada a partir de ``_abrir_banco`` e de ``inicializar_banco`` para que
+    bancos recém-criados (ou antigos, sem estas tabelas) passem a suportar
+    ``salvar_pontos_trajetoria`` e ``registrar_exposicao_celulas`` sem quebrar
+    o pipeline.
+    """
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS trajetoria (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ocorrencia_id INTEGER,
+            track_id TEXT,
+            t_ms INTEGER,
+            x_m REAL,
+            z_m REAL,
+            helmet INTEGER,
+            vest INTEGER,
+            in_risk INTEGER,
+            fonte TEXT
+        )
+    """)
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_trajetoria_ocorrencia "
+        "ON trajetoria(ocorrencia_id)"
+    )
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS exposicao_celula (
+            celula_idx INTEGER PRIMARY KEY,
+            segundos_presenca REAL DEFAULT 0,
+            segundos_infracao REAL DEFAULT 0,
+            total_eventos INTEGER DEFAULT 0
+        )
+    """)
 
 
 def _abrir_banco():
@@ -59,7 +107,8 @@ def _abrir_banco():
     ).fetchone()
     if tabela:
         _migrar_esquema(cursor)
-        conexao.commit()
+    _garantir_tabelas(cursor)
+    conexao.commit()
     return conexao
 
 
@@ -89,6 +138,7 @@ def inicializar_banco(caminho_banco: str) -> bool:
         """)
 
         _migrar_esquema(cursor)
+        _garantir_tabelas(cursor)
 
         conexao.commit()
         mensagem = "[BANCO]: Tabela de ocorrências pronta!"
@@ -226,8 +276,8 @@ def salvar_cena(frame, registros, cena=None):
         conexao = sqlite3.connect(CAMINHO_BANCO)
         cursor = conexao.cursor()
 
-        sql = """INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto, caixas)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"""
+        sql = """INSERT INTO ocorrencias (timestamp, tipo_infracao, posicao_x, posicao_y, conf_pessoa, conf_capacete, conf_colete, caminho_foto, caixas, x_m, z_m, celula_idx)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"""
 
         for registro in registros:
             posicao = registro["posicao_operario"]
@@ -252,6 +302,9 @@ def salvar_cena(frame, registros, cena=None):
                     _to_float(registro.get("conf_colete"), None),  # None -> NULL
                     caminho_salvar,
                     caixas_json,
+                    _to_float(registro.get("x_m"), None),  # posição na planta (m)
+                    _to_float(registro.get("z_m"), None),  # posição na planta (m)
+                    int(registro.get("celula_idx") or 0),   # célula do mapa de calor
                 ),
             )
             ids_criados.append(cursor.lastrowid)
@@ -401,6 +454,9 @@ def dados_ocorrencias():
                      "conf_colete, " \
                      "caminho_foto, " \
                      "caixas, " \
+                     "x_m, " \
+                     "z_m, " \
+                     "celula_idx, " \
                      "COALESCE(status, 'pendente') AS status, " \
                      "motivo, " \
                      "revisado_em " \
@@ -537,3 +593,145 @@ def calcular_dados_dashboard(dias: int = 7):
         "anterior": {"conformidade": anterior.get("conformidade"),
                      "pessoas_observadas": anterior.get("pessoas_observadas", 0)},
     }
+
+
+# ---------------------------------------------------------------------------
+# Trajetória e exposição por célula (Etapas 4 e 5 do Plano de Evolução)
+# ---------------------------------------------------------------------------
+def obter_trajetoria(ocorrencia_id: int) -> list:
+    """Retorna a lista de pontos de trajetória de uma ocorrência (ordenados por tempo)."""
+    pontos = []
+    if not os.path.isfile(CAMINHO_BANCO):
+        return pontos
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for linha in cursor.execute(
+            "SELECT t_ms, x_m, z_m, helmet, vest, in_risk FROM trajetoria WHERE ocorrencia_id = ? ORDER BY t_ms, id",
+            (int(ocorrencia_id),),
+        ):
+            pontos.append({
+                "t_ms": linha[0],
+                "x_m": linha[1],
+                "z_m": linha[2],
+                "helmet": bool(linha[3]),
+                "vest": bool(linha[4]),
+                "in_risk": bool(linha[5]),
+            })
+    except (sqlite3.Error, TypeError, ValueError):
+        pass
+    finally:
+        if conexao:
+            conexao.close()
+    return pontos
+
+
+def salvar_pontos_trajetoria(ocorrencia_id: int, pontos: list) -> bool:
+    """Persiste a lista de pontos de trajetória de uma ocorrência."""
+    if not pontos:
+        return False
+    if not os.path.isfile(CAMINHO_BANCO):
+        return False
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for p in pontos:
+            cursor.execute(
+                "INSERT INTO trajetoria (ocorrencia_id, track_id, t_ms, x_m, z_m, helmet, vest, in_risk, fonte) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    int(ocorrencia_id),
+                    p.get("track_id"),
+                    int(p.get("t_ms", 0)),
+                    float(p.get("x_m", 0)),
+                    float(p.get("z_m", 0)),
+                    int(p.get("helmet", 0)),
+                    int(p.get("vest", 0)),
+                    int(p.get("in_risk", 0)),
+                    p.get("fonte", "real"),
+                ),
+            )
+        conexao.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        if conexao:
+            conexao.close()
+
+
+def limpar_trajetoria_antiga(dias: int = 90) -> int:
+    """Remove trajetorias de ocorrências anteriores a ``dias`` dias (limpeza)."""
+    if not os.path.isfile(CAMINHO_BANCO):
+        return 0
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        corte = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%dT%H:%M:%S")
+        cursor.execute(
+            "DELETE FROM trajetoria WHERE ocorrencia_id IN (SELECT id FROM ocorrencias WHERE timestamp < ?)",
+            (corte,),
+        )
+        apagados = cursor.rowcount
+        conexao.commit()
+        return apagados
+    except sqlite3.Error:
+        return 0
+    finally:
+        if conexao:
+            conexao.close()
+
+
+def registrar_exposicao_celulas(incrementos: dict) -> bool:
+    """Incrementa a exposição de cada célula (presença/infração/eventos)."""
+    if not incrementos:
+        return False
+    if not os.path.isfile(CAMINHO_BANCO):
+        return False
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for celula_idx, (presenca, infracao, eventos) in incrementos.items():
+            cursor.execute(
+                "INSERT INTO exposicao_celula (celula_idx, segundos_presenca, segundos_infracao, total_eventos) VALUES (?, ?, ?, ?) ON CONFLICT(celula_idx) DO UPDATE SET segundos_presenca = segundos_presenca + excluded.segundos_presenca, segundos_infracao = segundos_infracao + excluded.segundos_infracao, total_eventos = total_eventos + excluded.total_eventos",
+                (int(celula_idx), float(presenca), float(infracao), int(eventos)),
+            )
+        conexao.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        if conexao:
+            conexao.close()
+
+
+def obter_mapa_calor() -> list:
+    """Retorna o mapa de calor: {celula_idx, segundos_presenca, segundos_infracao, total_eventos, taxa_infracao}."""
+    mapa = []
+    if not os.path.isfile(CAMINHO_BANCO):
+        return mapa
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for linha in cursor.execute(
+            "SELECT celula_idx, segundos_presenca, segundos_infracao, total_eventos FROM exposicao_celula ORDER BY celula_idx"
+        ):
+            celula_idx, presenca, infracao, eventos = linha
+            taxa_infracao = infracao / max(1.0, presenca)
+            mapa.append({
+                "celula_idx": celula_idx,
+                "segundos_presenca": presenca,
+                "segundos_infracao": infracao,
+                "total_eventos": eventos,
+                "taxa_infracao": taxa_infracao,
+            })
+    except sqlite3.Error:
+        pass
+    finally:
+        if conexao:
+            conexao.close()
+    return mapa

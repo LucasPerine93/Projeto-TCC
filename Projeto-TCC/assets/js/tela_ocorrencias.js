@@ -4,7 +4,7 @@ import {
   el, icone, infoTipo, pilulaTipo, pilulaStatus, ordemGravidade, TIPOS_CONHECIDOS, normalizar,
   dataHoraCompleta, dataHoraRelativa, inicioDoPeriodo, regiaoDoQuadro, formatarPercentual, plural,
 } from "./util.js";
-import { registrarTela, avisar } from "./nucleo.js";
+import { registrarTela, avisar, irPara } from "./nucleo.js";
 import { agruparCenas, desenharCaixas, statusDe, resumoRevisao, mesmaCaixa } from "./cenas.js";
 
 const TAMANHO_PAGINA = 30;
@@ -218,6 +218,7 @@ const imagem = D("foto-ampliada");
 const seletor = D("seletor-trabalhador");
 const seletorBotoes = D("seletor-trabalhador-botoes");
 const btnCaixas = D("btn-marcar-caixas");
+const btnReplay = D("rev-replay");
 const blocoMotivo = D("rev-motivo-bloco");
 
 let aberta = null; // { chave, sel }  sel = -1 => todos
@@ -318,6 +319,7 @@ function desenharDetalhe() {
   D("rev-falso").hidden = todos || st !== "pendente";
   D("rev-reabrir").hidden = todos || st === "pendente";
   D("rev-todas").hidden = !(pendentesCena > 1);
+  btnReplay.hidden = todos || !sel?.ocorrencia?.id;
 }
 
 btnCaixas.addEventListener("click", () => { marcacoes = !marcacoes; desenharDetalhe(); });
@@ -390,6 +392,32 @@ D("rev-falso-ok").addEventListener("click", () => {
   D("rev-falso").setAttribute("aria-expanded", "false");
   revisarAtual("descartada", obs ? `${base} — ${obs}` : base);
 });
+/* ---------- Replay 3D de uma ocorrencia real (Etapa 4) ---------- */
+/* O motor do gemeo carrega sob demanda ao entrar na aba; espera o hook aparecer. */
+function esperarHookReplay(tentativas = 30) {
+  if (typeof window.gemeoReproduzirOcorrencia === "function") return Promise.resolve(window.gemeoReproduzirOcorrencia);
+  if (tentativas <= 0) return Promise.resolve(null);
+  return new Promise((r) => setTimeout(r, 150)).then(() => esperarHookReplay(tentativas - 1));
+}
+
+btnReplay.addEventListener("click", async () => {
+  const cena = cenaAberta();
+  const sel = cena && entrada(cena);
+  const id = sel?.ocorrencia?.id;
+  if (id == null) return;
+  btnReplay.disabled = true;
+  try {
+    irPara("gemeo");
+    const hook = await esperarHookReplay();
+    if (!hook) { avisar("O Gêmeo 3D ainda está carregando. Tente novamente em instantes.", { tipo: "erro" }); return; }
+    await hook(id);
+  } catch (e) {
+    avisar("Não foi possível reproduzir a trajetória da ocorrência.", { tipo: "erro" });
+  } finally {
+    btnReplay.disabled = false;
+  }
+});
+
 D("rev-todas").addEventListener("click", async () => {
   const cena = cenaAberta();
   if (!cena) return;
