@@ -199,11 +199,11 @@ Apresentação no TCC: tabelas com média ± desvio e n, gráficos de latência 
 3. Registrar posição na planta ao salvar ocorrência. *Depende de:* 2.
 4. Tabela de trajetória + replay real. *Depende de:* 2 e 3.
 5. Mapa de calor por exposição e tempo de exposição. *Depende de:* 2, 3 e das lacunas "sem dados".
-6. Revisar `verificar_area_risco` (ponto do chão) e `associar_trilhas` (atribuição global) com dados anotados. *Depende de:* conjunto de teste (seção 12).
+6. Revisar `verificar_area_risco` (ponto do chão) e `associar_trilhas` (atribuição global) com dados anotados. *Depende de:* conjunto de teste (seção 12). **Concluído:** `verificar_area_risco` usa a base central do operário (Etapa 3) e `associar_trilhas` faz atribuição global gulosa por placar (Etapa 6), com desempate por recência (≤ 3 s), ambiguidade (`MARGEM_AMBIGUIDADE`) e `TEMPO_VIDA_TRILHA` mantido.
 7. Protocolo de validação e coleta. Em paralelo com 2–6.
-8. Assistente de IA conectado (somente leitura). *Depende de:* 3 e 5 para respostas úteis.
+8. Assistente de IA conectado (somente leitura). *Depende de:* 3 e 5 para respostas úteis. **Concluído:** `POST /assistente` (sessão do painel) com motor local offline em `assistente.py` (ou LLM externo opcional via `ASSISTENTE_LLM_URL`), lendo apenas `calcular_dados_dashboard`/`dados_ocorrencias`/`obter_mapa_calor`; zonas críticas devolvem `acao.tipo = "focar_gemeo"` e o botão "Ver região no Gêmeo 3D" abre a aba com o mapa de calor ligado.
 
 ## 15. Como testar o que foi feito
-* Unitários: `python3 -m pytest -q` (30) e `node tests/js/test_fonte_dados.js` (10).
+* Unitários: `python3 -m pytest -q` (54) e `node tests/js/test_fonte_dados.js` (10).
 * Modo real sem hardware: `python3 tools/ws_teste_gemeo.py` e, na aba Gêmeo 3D → botão de fonte → "Avançado" → `ws://localhost:8000/ws`.
 * A aba só funciona com o **site inteiro** servido pelo App Lab (ela usa `libs/three.min.js` local; sem internet).

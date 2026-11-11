@@ -581,57 +581,69 @@ def pontuar_associacao(box_atual, box_anterior):
 
 
 def associar_trilhas(lista_de_operarios, agora):
-    """Atribui um ``track_id`` efemero a cada operario do frame atual."""
+    """Atribui um ``track_id`` efemero a cada operario do frame atual.
+
+    Atribuicao GLOBAL gulosa (Etapa 6 do Plano de Evolucao): pontua TODOS os
+    pares (trilha, operario) compativeis, ordena do melhor placar para o pior
+    (e, em empate, prioriza trilhas vistas a no maximo 3 s) e atribui de forma
+    gulosa — cada trilha e cada operario usados no maximo uma vez. Em
+    cruzamentos a ordem da lista nao decide identidade: vence o par global
+    mais forte. A regra de ambiguidade continua valendo: se o melhor e o
+    segundo candidato empatarem (diferenca < MARGEM_AMBIGUIDADE), o operario
+    nao recebe trilha nenhuma e abre uma nova.
+    """
     global _proximo_track_id, _trilhas_ativas
 
     for trilha_id in list(_trilhas_ativas.keys()):
         if (agora - _trilhas_ativas[trilha_id]["visto_em"]) > TEMPO_VIDA_TRILHA:
             del _trilhas_ativas[trilha_id]
 
-    candidatas = sorted(_trilhas_ativas.items())
-    usadas = set()
+    candidatas = list(_trilhas_ativas.items())
 
-    for operario in lista_de_operarios:
-        melhor = None
-        segundo = None
-
+    # 1) pontua cada par (trilha, operario) compativel
+    candidatos = []
+    for indice_op, operario in enumerate(lista_de_operarios):
+        compativeis = []
         for trilha_id, dados in candidatas:
-            if trilha_id in usadas:
-                continue
-
             pontos = pontuar_associacao(operario.box_xyxy, dados["box"])
             if pontos is None:
                 continue
-
             compativel = (
                 pontos["iou"] >= LIMIAR_IOU
                 or pontos["distancia_relativa"] <= LIMIAR_DISTANCIA
             )
-            if not compativel:
-                continue
-
-            if melhor is None or pontos["placar"] > melhor[1]["placar"]:
-                segundo = melhor
-                melhor = (trilha_id, pontos)
-            elif segundo is None or pontos["placar"] > segundo[1]["placar"]:
-                segundo = (trilha_id, pontos)
-
-        # Cruzamento ambiguo (duas trilhas praticamente empatadas): nao
-        # presumimos identidade e abrimos uma trilha nova.
+            if compativel:
+                compativeis.append((trilha_id, pontos, dados))
+        compativeis.sort(key=lambda item: item[1]["placar"], reverse=True)
+        # 2) cruzamento ambiguo (duas trilhas praticamente empatadas): nao
+        #    presumimos identidade e descartamos as candidaturas do operario;
+        #    ele vai abrir uma trilha nova.
         if (
-            melhor is not None
-            and segundo is not None
-            and abs(melhor[1]["placar"] - segundo[1]["placar"]) < MARGEM_AMBIGUIDADE
+            len(compativeis) >= 2
+            and abs(compativeis[0][1]["placar"] - compativeis[1][1]["placar"]) < MARGEM_AMBIGUIDADE
         ):
-            melhor = None
+            continue
+        for trilha_id, pontos, dados in compativeis:
+            # dt <= 3 s: trilha "fresca"; desempata placares iguais contra
+            # trilhas paradas ha mais tempo (o TTL segue valendo so para expirar).
+            fresca = 1.0 if (agora - dados["visto_em"]) <= 3.0 else 0.0
+            candidatos.append((pontos["placar"], fresca, trilha_id, indice_op))
 
-        if melhor is not None:
-            trilha_id = melhor[0]
-        else:
+    # 3) guloso global: do melhor placar para o pior; trilha e operario no maximo uma vez
+    candidatos.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    trilhas_usadas = set()
+    atribuicoes = {}
+    for _placar, _fresca, trilha_id, indice_op in candidatos:
+        if trilha_id in trilhas_usadas or indice_op in atribuicoes:
+            continue
+        trilhas_usadas.add(trilha_id)
+        atribuicoes[indice_op] = trilha_id
+
+    for indice_op, operario in enumerate(lista_de_operarios):
+        trilha_id = atribuicoes.get(indice_op)
+        if trilha_id is None:
             trilha_id = _proximo_track_id
             _proximo_track_id += 1
-
-        usadas.add(trilha_id)
         operario.track_id = trilha_id
         _trilhas_ativas[trilha_id] = {"box": operario.box_xyxy, "visto_em": agora}
 

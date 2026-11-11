@@ -1619,13 +1619,15 @@
       heatDrawAcc += dt;
       if (heatDirty && heatOn && heatDrawAcc > 0.25) { heatDrawAcc = 0; heatDirty = false; drawHeat(); }
     }
-    $('toggleHeat').addEventListener('click', (e) => {
-      heatOn = !heatOn; heatMesh.visible = heatOn;
-      e.currentTarget.setAttribute('aria-pressed', String(heatOn));
-      e.currentTarget.textContent = 'Mapa de calor: ' + (heatOn ? 'ligado' : 'desligado');
+    function definirHeat(ligado) {
+      if (heatOn === ligado) return;
+      heatOn = ligado; heatMesh.visible = heatOn;
+      const btn = $('toggleHeat');
+      btn.setAttribute('aria-pressed', String(heatOn));
+      btn.textContent = 'Mapa de calor: ' + (heatOn ? 'ligado' : 'desligado');
       if (heatOn) {
         drawHeat();
-        if (typeof liveMode !== 'undefined' && liveMode) {
+        if (liveMode) {
           apiJson('/mapa_calor').then((res) => {
             heatGrid.fill(0);
             const celulas = res && res.celulas ? res.celulas : [];
@@ -1640,7 +1642,8 @@
           }).catch(() => { /* backend indisponível: mantém o heatGrid local */ });
         }
       }
-    });
+    }
+    $('toggleHeat').addEventListener('click', () => definirHeat(!heatOn));
     $('clearHeat').addEventListener('click', () => { heatGrid.fill(0); heatDirty = false; drawHeat(); logEvent('HistÃ³rico do mapa de calor zerado.'); });
 
     // ---- 2. replay temporal "caixa-preta" ----
@@ -1715,6 +1718,18 @@
         logEvent('Não foi possível carregar a trajetória da ocorrência #' + id + '.', 'alert');
         return false;
       });
+    };
+    // Ponte com o assistente contextual (Etapa 8): aproxima a camera na regiao
+    // indicada (x_m, z_m do mapa de calor) e liga o mapa de calor historico.
+    // A acao e Sugerida pela IA; so roda quando o usuario clica no botao.
+    window.gemeoFocarRegiao = function (x_m, z_m) {
+      const x = Number(x_m), z = Number(z_m);
+      if (!isFinite(x) || !isFinite(z)) return;
+      focoX = clamp(x, -WW / 2, WW / 2);
+      focoZ = clamp(z, -WH / 2, WH / 2);
+      tR = 18;   // zoom suave ate a regiao
+      definirHeat(true);
+      logEvent('Assistente: região ' + focoX.toFixed(1) + ' m, ' + focoZ.toFixed(1) + ' m no gêmeo com o mapa de calor ligado.');
     };
 
     function updateReplay(t) {
@@ -2016,10 +2031,15 @@
     // ---------- CÃ¢mera Orbital ----------
     const HOME = { theta: -0.35, phi: 0.92, r: 36 };
     let tTheta = HOME.theta, tPhi = HOME.phi, tR = HOME.r, theta = tTheta, phi = tPhi, rad = tR;
+    let focoX = 0, focoZ = 0;   // ponto de interesse: "ver regiao" do assistente (Etapa 8)
     const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
     function placeCamera() {
-      camera.position.set(rad * Math.sin(phi) * Math.sin(theta), rad * Math.cos(phi), rad * Math.sin(phi) * Math.cos(theta));
-      camera.lookAt(0, 0.6, 0);
+      camera.position.set(
+        focoX + rad * Math.sin(phi) * Math.sin(theta),
+        rad * Math.cos(phi),
+        focoZ + rad * Math.sin(phi) * Math.cos(theta)
+      );
+      camera.lookAt(focoX, 0.6, focoZ);
     }
     const ptrs = new Map(); let lastPinch = 0;
     const pdist = () => { const a = [...ptrs.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };

@@ -14,8 +14,10 @@ import os
 import sqlite3
 import sys
 import tempfile
+import time
 import types
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "python")))
@@ -71,6 +73,8 @@ _instalar_stubs()
 # detector primeiro: banco <-> servidor tem import circular (igual ao main.py)
 import detector  # noqa: E402
 import banco  # noqa: E402
+import amostragem  # noqa: E402
+import assistente  # noqa: E402
 import servidor  # noqa: E402
 
 
@@ -557,6 +561,200 @@ class TestTelemetriaComPosicao(unittest.TestCase):
         canal, payload = enviar.call_args_list[0].args
         self.assertEqual(canal, "telemetria_gemeo")
         self.assertEqual(payload["workers"][0]["position"], {"x": 5.5, "z": -2.25})
+
+
+class TestAtribuicaoGlobalTrilhas(unittest.TestCase):
+    """Etapa 6: atribuicao global gulosa por placar (nao pela ordem da lista)."""
+
+    def setUp(self):
+        resetar_estado()
+
+    def test_par_melhor_vence_ordem_da_lista(self):
+        # trilha ja existe na posicao exata do segundo operario
+        alvo = detector.Operario(box_xyxy=(0, 50, 200, 350))
+        detector.associar_trilhas([alvo], 1000.0)
+        id_alvo = alvo.track_id
+
+        # no frame seguinte o vizinho vem ANTES na lista: a escolha gulosa por
+        # ordem de iteracao entregaria a trilha a ele; a global entrega ao par
+        # de maior placar (o operario na posicao exata).
+        vizinho = detector.Operario(box_xyxy=(30, 50, 230, 350))
+        exato = detector.Operario(box_xyxy=(0, 50, 200, 350))
+        detector.associar_trilhas([vizinho, exato], 1010.0)
+
+        self.assertEqual(exato.track_id, id_alvo)
+        self.assertNotEqual(vizinho.track_id, id_alvo)
+
+    def test_trilha_e_operario_usados_no_maximo_uma_vez(self):
+        # duas trilhas ativas e dois operarios: cada um fica com uma trilha
+        a = detector.Operario(box_xyxy=(0, 50, 100, 350))
+        detector.associar_trilhas([a], 1000.0)
+        b = detector.Operario(box_xyxy=(250, 50, 350, 350))
+        detector.associar_trilhas([b], 1002.0)
+        self.assertEqual(len({a.track_id, b.track_id}), 2)
+
+        a2 = detector.Operario(box_xyxy=(5, 50, 105, 350))
+        b2 = detector.Operario(box_xyxy=(255, 50, 355, 350))
+        detector.associar_trilhas([a2, b2], 1010.0)
+
+        self.assertEqual(a2.track_id, a.track_id)
+        self.assertEqual(b2.track_id, b.track_id)
+
+    def test_ambiguidade_entre_duas_trilhas_abre_nova(self):
+        a = detector.Operario(box_xyxy=(0, 50, 100, 350))
+        detector.associar_trilhas([a], 1000.0)
+        b = detector.Operario(box_xyxy=(250, 50, 350, 350))
+        detector.associar_trilhas([b], 1002.0)  # longe da trilha A -> trilha nova
+
+        # operario equidistant das duas trilhas: placares empatados (< MARGEM)
+        # e a regra antiga de ambiguidade deve criar uma trilha nova.
+        q = detector.Operario(box_xyxy=(125, 50, 225, 350))
+        detector.associar_trilhas([q], 1004.0)
+
+        self.assertEqual(len({a.track_id, b.track_id, q.track_id}), 3)
+
+
+class TestAssistenteSomenteLeitura(unittest.TestCase):
+    """Etapa 8: POST /assistente com dados reais; consulta APENAS leitura."""
+
+    def setUp(self):
+        resetar_estado()
+        self.tmp = tempfile.TemporaryDirectory()
+        p = mock.patch.multiple(
+            banco,
+            CAMINHO_PENDRIVE=self.tmp.name,
+            CAMINHO_BANCO=os.path.join(self.tmp.name, "seguranca.db"),
+            PASTA_FOTOS=os.path.join(self.tmp.name, "evidencias"),
+        )
+        p.start()
+        self.addCleanup(p.stop)
+        v = mock.patch.object(banco, "verificar_pendrive", return_value=True)
+        v.start()
+        self.addCleanup(v.stop)
+        self.addCleanup(self.tmp.cleanup)
+        banco.inicializar_banco(banco.CAMINHO_BANCO)
+
+        # amostragem guarda baldes em memoria: isola o teste do resto da suite
+        amostragem._baldes.clear()
+        amostragem._ultima_gravacao = 0.0
+        self.addCleanup(amostragem._baldes.clear)
+
+        try:
+            import seguranca
+            from fastapi import FastAPI
+            from fastapi.testclient import TestClient
+        except Exception:
+            self.skipTest("FastAPI/httpx reais indisponiveis neste ambiente")
+
+        self.seguranca = seguranca
+        seguranca._sessoes.clear()
+        seguranca._sessoes["tok-teste"] = time.time() + seguranca.DURACAO_SESSAO
+        self.addCleanup(seguranca._sessoes.clear)
+
+        app = FastAPI()
+
+        @app.post("/assistente")
+        async def _rota(req: seguranca.Request):
+            return await servidor._assistente(req)
+
+        self.client = TestClient(app)
+
+    def _post(self, pergunta, sessao=True):
+        return self.client.post(
+            "/assistente",
+            json={"pergunta": pergunta},
+            cookies={"sessao": "tok-teste"} if sessao else {},
+            headers={"X-Requested-With": "painel"},
+        )
+
+    def _semear_ocorrencias(self):
+        frame = b"\xff\xd8fake-jpeg\xff\xd9"
+        # [0] com capacete e sem colete -> "Sem colete"; [1] com colete e sem
+        # capacete -> "Sem capacete" (duas trilhas distintas, sem cooldown)
+        specs = {
+            "person": [pessoa(50), pessoa(250)],
+            "helmet": [capacete(50)],
+            "vest": [colete(250)],
+        }
+        with mock.patch.object(detector.servidor, "box_risco", None), \
+                mock.patch.object(detector.servidor, "risco", False):
+            detector.operario_detectado(specs, frame)
+
+    def test_pergunta_requer_sessao(self):
+        resposta = self._post("resumo", sessao=False)
+        self.assertEqual(resposta.status_code, 401)
+
+    def test_pergunta_vazia_retorna_400(self):
+        # o handler segue o estilo do servidor: devolve (dict, status)
+        class _Req:
+            def __init__(self):
+                self.cookies = {"sessao": "tok-teste"}
+                self.headers = {"x-requested-with": "painel"}
+
+            async def json(self):
+                return {"pergunta": "  "}
+
+        import asyncio
+        resposta = asyncio.run(servidor._assistente(_Req()))
+        self.assertEqual(resposta[1], 400)
+        self.assertIn("erro", resposta[0])
+
+    def test_ocorrencias_tipos_e_revisao(self):
+        self._semear_ocorrencias()
+        resposta = self._post("Quais foram as ocorrencias mais frequentes nesta semana?")
+        self.assertEqual(resposta.status_code, 200)
+        corpo = resposta.json()
+        texto = corpo["resposta"]
+        self.assertIn("2 ocorr", texto)          # 1 sem capacete + 1 sem colete
+        self.assertIn("Sem capacete", texto)
+        self.assertIn("Sem colete", texto)
+        self.assertIn("pendente", texto)         # status de revisao
+        self.assertIsNone(corpo["acao"])         # ocorrencias nao fogem para o 3D
+
+    def test_conformidade_mostra_meta_e_periodo_anterior(self):
+        agora = time.time()
+        conformes = [SimpleNamespace(tem_capacete=True, tem_colete=True, risco_detectado=False)
+                     for _ in range(4)]
+        amostragem.registrar(conformes, area_ativa=False, agora=agora)
+        amostragem.descarregar(banco.CAMINHO_BANCO, forcar=True, agora=agora)
+        # semana anterior: metade conformes, para aparecer a comparacao
+        metade = [SimpleNamespace(tem_capacete=(i % 2 == 0), tem_colete=True, risco_detectado=False)
+                  for i in range(4)]
+        amostragem.registrar(metade, area_ativa=False, agora=agora - 8 * 24 * 3600)
+        amostragem.descarregar(banco.CAMINHO_BANCO, forcar=True, agora=agora - 8 * 24 * 3600)
+
+        resposta = self._post("Compare o periodo atual com o anterior.")
+        self.assertEqual(resposta.status_code, 200)
+        texto = resposta.json()["resposta"]
+        self.assertIn("100", texto)
+        self.assertIn("meta de 95", texto)      # meta de conformidade
+        self.assertIn("anterior", texto)
+
+    def test_zona_critica_gera_acao_para_o_gemeo(self):
+        banco.registrar_exposicao_celulas({1234: (100.0, 50.0, 5)})
+        resposta = self._post("Qual zona apresentou mais eventos?")
+        self.assertEqual(resposta.status_code, 200)
+        corpo = resposta.json()
+        self.assertIn("1234", corpo["resposta"])
+        acao = corpo["acao"]
+        self.assertIsNotNone(acao)
+        self.assertEqual(acao["tipo"], "focar_gemeo")
+        x_esperado, z_esperado = assistente.idx_para_coords(1234)
+        self.assertAlmostEqual(acao["x_m"], round(x_esperado, 1), places=1)
+        self.assertAlmostEqual(acao["z_m"], round(z_esperado, 1), places=1)
+
+    def test_resumo_geral(self):
+        self._semear_ocorrencias()
+        resposta = self._post("Me de um panorama geral do canteiro.")
+        self.assertEqual(resposta.status_code, 200)
+        corpo = resposta.json()
+        self.assertIn("Resumo", corpo["resposta"])
+        self.assertIn("ocorrência", corpo["resposta"])
+
+    def test_pergunta_vazia_no_motor(self):
+        resultado = assistente.responder("")
+        self.assertIn("resposta", resultado)
+        self.assertEqual(resultado["acao"], None)
 
 
 if __name__ == "__main__":

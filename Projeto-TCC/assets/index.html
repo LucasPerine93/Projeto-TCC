@@ -78,7 +78,7 @@
           </div>
 
           <div class="topo-acoes">
-            <button id="botao-ia" class="btn" type="button" title="Assistente de IA (não conectado)" aria-expanded="false" aria-controls="painel-ia">
+            <button id="botao-ia" class="btn" type="button" title="Assistente de IA (somente leitura)" aria-expanded="false" aria-controls="painel-ia">
               <svg class="ic" aria-hidden="true"><use href="icones.svg#assistente" /></svg>
               <span>Assistente</span>
             </button>
@@ -475,29 +475,31 @@
         </section>
       </main>
 
-      <!-- ============ ASSISTENTE DE IA (estrutura visual; NÃO está conectado a nenhum modelo) ============ -->
+      <!-- ============ ASSISTENTE DE IA (somente leitura; consulta dados reais do SQLite) ============ -->
       <aside id="painel-ia" class="ia" aria-labelledby="ia-titulo" hidden>
         <div class="ia-cab">
           <h2 id="ia-titulo">Assistente de IA</h2>
-          <span class="chip" data-estado="atencao"><b aria-hidden="true"></b><span>Não conectado</span></span>
+          <span class="chip" data-estado="ok"><b aria-hidden="true"></b><span>Consulta local (SQLite)</span></span>
           <button id="ia-fechar" class="btn btn-icone btn-pequeno" type="button" aria-label="Fechar o assistente">
             <svg class="ic" aria-hidden="true"><use href="icones.svg#x" /></svg>
           </button>
         </div>
         <div class="ia-corpo">
-          <p><strong>Este recurso ainda não funciona.</strong> Nenhum modelo de IA está ligado ao painel e nenhuma resposta é gerada aqui.</p>
-          <p class="sub">Quando for conectado, o assistente só poderá <em>consultar</em> ocorrências e indicadores deste sistema. Ele não poderá alterar regras de segurança, a área de risco nem controlar equipamentos, e imagens ou dados pessoais não serão enviados a serviços externos sem sua ação.</p>
-          <h3>Exemplos do que está previsto (ainda indisponível)</h3>
+          <p>Assistente contextual em modo <em>leitura</em>: pergunte sobre ocorrências, conformidade e zonas críticas e ele responde com os números reais do banco deste servidor.</p>
+          <p class="sub">Ele não altera regras de segurança, a área de risco nem equipamentos. Sem <code>ASSISTENTE_LLM_URL</code> configurada, as respostas saem do próprio painel; a pergunta só vai a outro equipamento se essa variável estiver definida.</p>
+          <h3>Exemplos</h3>
           <ul class="ia-exemplos">
-            <li>Quais foram as ocorrências mais frequentes nesta semana?</li>
-            <li>Qual zona apresentou mais eventos?</li>
-            <li>Compare o período atual com o anterior.</li>
+            <li><button type="button" class="ia-exemplo" data-pergunta="Quais foram as ocorrências mais frequentes nesta semana?">Quais foram as ocorrências mais frequentes nesta semana?</button></li>
+            <li><button type="button" class="ia-exemplo" data-pergunta="Qual zona apresentou mais eventos?">Qual zona apresentou mais eventos?</button></li>
+            <li><button type="button" class="ia-exemplo" data-pergunta="Compare o período atual com o anterior.">Compare o período atual com o anterior.</button></li>
           </ul>
+          <h3 id="ia-historico-titulo">Conversa</h3>
+          <div id="ia-historico" class="ia-historico" hidden aria-live="polite" aria-labelledby="ia-historico-titulo"></div>
         </div>
-        <form class="ia-form" aria-label="Pergunta ao assistente (desativado)" onsubmit="return false">
+        <form class="ia-form" id="ia-form" aria-label="Pergunta ao assistente">
           <label for="ia-entrada" class="g-vh">Pergunta ao assistente</label>
-          <textarea id="ia-entrada" rows="2" placeholder="Indisponível: o assistente ainda não está conectado" disabled></textarea>
-          <button class="btn btn-primario" type="submit" disabled>Enviar</button>
+          <textarea id="ia-entrada" rows="2" placeholder="Ex.: qual zona apresentou mais eventos?" required></textarea>
+          <button class="btn btn-primario" type="submit">Enviar</button>
         </form>
       </aside>
     </div>

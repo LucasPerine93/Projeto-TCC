@@ -5,6 +5,7 @@ from fastapi import Request
 from fastapi.responses import Response, FileResponse
 from arduino.app_bricks.web_ui import WebUI
 import banco
+import assistente
 import seguranca
 
 box_risco = None
@@ -245,3 +246,31 @@ def _mapa_calor(*_args):
 
 ui.expose_api("GET", "/ocorrencia/{ocorrencia_id}/trajetoria", _trajetoria_ocorrencia)
 ui.expose_api("GET", "/mapa_calor", _mapa_calor)
+
+
+# ---------------------------------------------------------------------------
+# Etapa 8 do Plano de Evolucao: assistente contextual somente-leitura
+# ---------------------------------------------------------------------------
+async def _assistente(req: Request):
+    """POST /assistente — pergunta ao assistente; consulta APENAS leitura do SQLite.
+
+    Requer sessao do painel (cookie) + cabecalho x-requested-with: painel.
+    Nao altera area de risco, regras de seguranca nem equipamentos: so responde
+    com numeros ja gravados em banco.py (ocorrencias, conformidade e mapa).
+    """
+    negado = seguranca.exigir(req, escrita=True)
+    if negado is not None:
+        return negado
+    try:
+        corpo = await req.json()
+    except Exception:
+        corpo = None
+    if not isinstance(corpo, dict):
+        return {"erro": "corpo JSON invalido"}, 400
+    pergunta = corpo.get("pergunta", "")
+    if not isinstance(pergunta, str) or not pergunta.strip():
+        return {"erro": "pergunta vazia"}, 400
+    return assistente.responder(pergunta)
+
+
+ui.expose_api("POST", "/assistente", _assistente)
