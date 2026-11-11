@@ -45,6 +45,14 @@
   let trailFor = null, playReplay = null;
   const calibs = CAMS.map(() => null);                 // homografia por câmera: { world, img, plan, H }
   const calibState = { on: false, cur: null };         // calibração em andamento (pontos clicados)
+  // Restaura calibrações salvas (persistem entre recarregamentos de página).
+  try {
+    const saved = localStorage.getItem('epi.gemeo.calibs');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) parsed.forEach((c, i) => { if (c) calibs[i] = c; });
+    }
+  } catch (e) { /* localStorage indisponível ou dados corrompidos */ }
 
   // ---------- Registro de eventos ----------
   const logEl = $('log');
@@ -1742,6 +1750,7 @@
         chk = ' · erro no centro da imagem: ' + fnum(Math.hypot(q[0] - ref[0], q[1] - ref[1])) + ' px';
       }
       calibs[activeCam] = { world: cur.world.slice(), img: cur.img.slice(), plan: dst, H: Hm };
+      try { localStorage.setItem('epi.gemeo.calibs', JSON.stringify(calibs.map((c) => c ? { world: c.world, img: c.img, plan: c.plan, H: c.H } : null))); } catch (e) { /* localStorage indisponível */ }
       const rows = Hm.map((r) => '[' + r.map(fnum).join('  ') + ']').join(' ');
       logEvent('Homografia 3×3 de ' + name + ' (imagem 640×480 → planta 320×240): H = ' + rows + ' · erro de reprojeção: ' + fnum(err) + ' px' + chk + '.', 'ok');
       setCalib(false);
@@ -1846,6 +1855,27 @@
       renderFonte(); refreshUI(); openPanel(false);
     }
 
+    // Projeta um ponto da imagem (u,v em pixels 640×480) para coordenadas do mundo (x,z em metros)
+    // usando a homografia H da câmera ativa. Retorna {x,z} ou null se não houver calibração válida
+    // ou o ponto cair fora dos limites da planta.
+    function projImgParaPlano(u, v, camIdx) {
+      const cal = calibs[camIdx];
+      if (!cal || !cal.H) return null;
+      // Normaliza o frame de origem (detector: 720x480 via GemeoFonte.FRAME_W/H)
+      // para as dimensões do canvas do CCTV (CV_W=640, CV_H=480) usadas na calibração.
+      const fw = (typeof GemeoFonte !== 'undefined' && GemeoFonte.FRAME_W) ? GemeoFonte.FRAME_W : 720;
+      const fh = (typeof GemeoFonte !== 'undefined' && GemeoFonte.FRAME_H) ? GemeoFonte.FRAME_H : 480;
+      const uCal = u * (CV_W / fw);
+      const vCal = v * (CV_H / fh);
+      const [px, py] = applyH(cal.H, uCal, vCal);
+      if (!isFinite(px) || !isFinite(py)) return null;
+      const sx = W / WW, sy = H / WH;          // 8 px/m em ambos os eixos (planta 320×240 → 40×30 m)
+      const x = px / sx - WW / 2;
+      const z = py / sy - WH / 2;
+      if (Math.abs(x) > WW / 2 || Math.abs(z) > WH / 2) return null;
+      return { x, z };
+    }
+
     function aplicarQuadro(q) {
       const t = clock.elapsedTime; let sp = 0;
       for (const m of q.workers) {
@@ -1866,7 +1896,17 @@
           w.semPos = false;
           w.liveX = Math.max(-WW / 2 + 0.25, Math.min(WW / 2 - 0.25, m.position.x)); w.liveZ = Math.max(-WH / 2 + 0.25, Math.min(WH / 2 - 0.25, m.position.z));
           if (!w.active) { w.active = true; w.g.visible = true; w.x = w.liveX; w.z = w.liveZ; w.tx = w.x; w.tz = w.z; w.tracked = true; w.lastSeenT = t; w.g.position.set(w.x, 0, w.z); }
-        } else {                                  // chegou só a caixa na imagem: sem calibração câmera→planta não há como posicionar
+        } else if (m.image && m.image.foot) {                      // só caixa na imagem: projetar via homografia câmera→planta
+          const pp = projImgParaPlano(m.image.foot[0], m.image.foot[1], activeCam);
+          if (pp) {
+            w.semPos = false;
+            w.liveX = Math.max(-WW / 2 + 0.25, Math.min(WW / 2 - 0.25, pp.x)); w.liveZ = Math.max(-WH / 2 + 0.25, Math.min(WH / 2 - 0.25, pp.z));
+            if (!w.active) { w.active = true; w.g.visible = true; w.x = w.liveX; w.z = w.liveZ; w.tx = w.x; w.tz = w.z; w.tracked = true; w.lastSeenT = t; w.g.position.set(w.x, 0, w.z); }
+          } else {
+            sp++; w.semPos = true;
+            if (w.active) { w.active = false; w.g.visible = false; }
+          }
+        } else {                                                    // nem posição nem imagem
           sp++; w.semPos = true;
           if (w.active) { w.active = false; w.g.visible = false; }
         }

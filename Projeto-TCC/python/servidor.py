@@ -23,14 +23,52 @@ def enviar_log(mensagem):
     ui.send_message("log_deteccao", mensagem)
 
 _ui_telemetria_ultimo = 0.0
+_telemetria_sequencia = 0
 
 def enviar_telemetria(operarios):
-    global _ui_telemetria_ultimo
+    """Envia um quadro de telemetria do Gêmeo 3D em no máximo ~5 Hz.
+
+    ``track_id`` é uma trilha efêmera, não uma identidade civil. Quadros vazios
+    são enviados quando permitido pelo limite de taxa para que o cliente saiba
+    que a fonte real permanece ativa mesmo sem pessoas na câmera.
+    """
+    global _ui_telemetria_ultimo, _telemetria_sequencia
+
     agora = time.time()
     if agora - _ui_telemetria_ultimo < 0.2:
-        return  # controle de taxa: min 0.2s entre envios
+        return False
+
     _ui_telemetria_ultimo = agora
-    ui.send_message("telemetria_gemeo", {"operarios": operarios})
+    _telemetria_sequencia += 1
+    workers = []
+
+    for operario in operarios:
+        if operario.track_id is None:
+            continue
+
+        workers.append({
+            "id": str(operario.track_id),
+            "bbox": list(operario.box_xyxy),
+            "ppe": {
+                "helmet": bool(operario.tem_capacete),
+                "vest": bool(operario.tem_colete),
+            },
+            "confidence": {
+                "person": operario.conf_pessoa,
+                "helmet": operario.conf_capacete,
+                "vest": operario.conf_colete,
+            },
+            "inRisk": bool(operario.risco_detectado),
+        })
+
+    ui.send_message("telemetria_gemeo", {
+        "source": "real",
+        "timestamp": int(agora * 1000),
+        "sequence": _telemetria_sequencia,
+        "frame": {"w": 720, "h": 480},
+        "workers": workers,
+    })
+    return True
 
 ui.on_message('area_marcada', calcular_area)
 ui.on_message("limpar_box_risco", limpar_box_risco)

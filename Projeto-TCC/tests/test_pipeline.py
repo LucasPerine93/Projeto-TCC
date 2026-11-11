@@ -71,6 +71,7 @@ _instalar_stubs()
 # detector primeiro: banco <-> servidor tem import circular (igual ao main.py)
 import detector  # noqa: E402
 import banco  # noqa: E402
+import servidor  # noqa: E402
 
 
 def pessoa(x, y1=50, y2=350, largura=100, conf=0.9):
@@ -93,6 +94,55 @@ def resetar_estado():
     detector._ultima_ocorrencia.clear()
     detector._proximo_track_id = 1
     detector.ultimo_alerta = 0.0
+    servidor._ui_telemetria_ultimo = 0.0
+    servidor._telemetria_sequencia = 0
+
+
+class TestTelemetriaGemeo(unittest.TestCase):
+    def setUp(self):
+        resetar_estado()
+
+    def test_payload_rate_limit_e_frame_vazio(self):
+        operario = detector.Operario(
+            box_xyxy=(10, 20, 30, 80),
+            tem_colete=False,
+            tem_capacete=True,
+            risco_detectado=True,
+            conf_pessoa=0.96,
+            conf_capacete=0.91,
+            conf_colete=None,
+            track_id=7,
+        )
+
+        with mock.patch.object(servidor.ui, "send_message") as enviar, \
+                mock.patch.object(servidor.time, "time", side_effect=[100.0, 100.1, 100.25]):
+            self.assertTrue(servidor.enviar_telemetria([operario]))
+            self.assertFalse(servidor.enviar_telemetria([operario]))
+            self.assertTrue(servidor.enviar_telemetria([]))
+
+        self.assertEqual(enviar.call_count, 2)
+        canal, payload = enviar.call_args_list[0].args
+        self.assertEqual(canal, "telemetria_gemeo")
+        self.assertEqual(payload, {
+            "source": "real",
+            "timestamp": 100000,
+            "sequence": 1,
+            "frame": {"w": 720, "h": 480},
+            "workers": [{
+                "id": "7",
+                "bbox": [10, 20, 30, 80],
+                "ppe": {"helmet": True, "vest": False},
+                "confidence": {"person": 0.96, "helmet": 0.91, "vest": None},
+                "inRisk": True,
+            }],
+        })
+        self.assertEqual(enviar.call_args_list[1].args[1]["workers"], [])
+        self.assertEqual(enviar.call_args_list[1].args[1]["sequence"], 2)
+
+    def test_area_de_risco_usa_ponto_dos_pes(self):
+        # O centro geométrico está fora, mas a base central toca a área.
+        self.assertTrue(detector.verificar_area_risco([40, 300, 80, 360], (20, 100, 100, 320)))
+        self.assertFalse(detector.verificar_area_risco([40, 300, 80, 319], (20, 100, 100, 320)))
 
 
 class TestToFloat(unittest.TestCase):

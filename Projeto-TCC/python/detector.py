@@ -163,6 +163,9 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
 
     pessoas_detectadas = _get_pessoa(specs_frame)
     if not pessoas_detectadas:
+        # Quadros vazios mantêm o cliente do Gêmeo informado de que a fonte
+        # real continua conectada, em vez de parecer uma perda de sinal.
+        _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
         return lista_operarios
 
     for dados_pessoa in pessoas_detectadas:
@@ -192,6 +195,9 @@ def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: b
     _executar_seguro("analisar_seguranca", analisar_seguranca, lista_operarios)
     trilhas_antes = _proximo_track_id
     _executar_seguro("filtrar_salvamento", filtrar_salvamento, lista_operarios, frame)
+    # filtrar_salvamento atribui as trilhas; só então o payload contém o
+    # track_id efêmero junto de caixas, EPIs, confiança e risco consolidados.
+    _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
     # filtrar_salvamento associa as trilhas; as novas contam como passagens.
     _executar_seguro("amostragem", _amostrar, lista_operarios, bool(area_risco_ativa),
                      max(0, _proximo_track_id - trilhas_antes))
@@ -547,11 +553,6 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
     for chave in list(_ultima_ocorrencia.keys()):
         if (agora - _ultima_ocorrencia[chave]) > (TEMPO_ESPERA_SALVAR * 3):
             del _ultima_ocorrencia[chave]
-
-    # Envia telemetria a ~5 Hz (minimo 0.2s entre envios)
-    operario_ids = [o.track_id for o in lista_de_operarios if o.track_id is not None]
-    servidor.enviar_telemetria(operario_ids)
-
 
 # ---------------------------------------------------------------------------
 # Geometria
