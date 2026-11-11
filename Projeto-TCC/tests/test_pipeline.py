@@ -10,8 +10,10 @@ Fora da placa, as libs ``arduino.*`` e ``fastapi`` são substituídas por stubs.
 Na placa (libs reais instaladas) os stubs não entram.
 """
 import json
+import math
 import os
 import sqlite3
+import statistics
 import sys
 import tempfile
 import time
@@ -21,6 +23,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "python")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "tools")))
 
 import numpy as np
 
@@ -76,6 +79,7 @@ import banco  # noqa: E402
 import amostragem  # noqa: E402
 import assistente  # noqa: E402
 import servidor  # noqa: E402
+import avaliar_experimento  # noqa: E402
 
 
 def pessoa(x, y1=50, y2=350, largura=100, conf=0.9):
@@ -755,6 +759,271 @@ class TestAssistenteSomenteLeitura(unittest.TestCase):
         resultado = assistente.responder("")
         self.assertIn("resposta", resultado)
         self.assertEqual(resultado["acao"], None)
+
+
+class TestMetricasEpi(unittest.TestCase):
+    """Etapa 7/Seção 12: precisão/revocação/F1/acurácia e IC 95 % de Wilson."""
+
+    def test_precisao_revocacao_f1_acuracia_e_agregado(self):
+        contagens = {
+            "capacete": {"tp": 45, "fp": 5, "fn": 10, "tn": 40},
+            "colete":   {"tp": 30, "fp": 10, "fn": 5, "tn": 55},
+        }
+        res = avaliar_experimento.calcular_metricas_epi(contagens)
+        cap = res["classes"]["capacete"]
+        self.assertAlmostEqual(cap["precisao"], 0.9)
+        self.assertAlmostEqual(cap["revocacao"], 45.0 / 55.0)
+        p, r = cap["precisao"], cap["revocacao"]
+        self.assertAlmostEqual(cap["f1"], 2.0 * p * r / (p + r))
+        self.assertAlmostEqual(cap["acuracia"], 85.0 / 100.0)
+        self.assertEqual(cap["n_amostras"], 100)
+        self.assertEqual(cap["suporte"], 55)
+
+        col = res["classes"]["colete"]
+        self.assertAlmostEqual(col["precisao"], 0.75)
+        self.assertAlmostEqual(col["revocacao"], 30.0 / 35.0)
+        self.assertAlmostEqual(col["acuracia"], 85.0 / 100.0)
+
+        agg = res["agregado"]
+        self.assertEqual((agg["tp"], agg["fp"], agg["fn"], agg["tn"]), (75, 15, 15, 95))
+        self.assertAlmostEqual(agg["precisao"], 75.0 / 90.0)
+        self.assertAlmostEqual(agg["revocacao"], 75.0 / 90.0)
+        self.assertAlmostEqual(agg["acuracia"], 170.0 / 200.0)
+
+    def test_ic95_wilson_simetrico_em_p_meio(self):
+        res = avaliar_experimento.calcular_metricas_epi(
+            {"capacete": {"tp": 50, "fp": 50, "fn": 0, "tn": 0}})
+        met = res["classes"]["capacete"]
+        self.assertAlmostEqual(met["precisao"], 0.5)
+        lo, hi = met["precisao_ic95"]
+        self.assertAlmostEqual((lo + hi) / 2.0, 0.5, places=9)  # Wilson é simétrico em p=0.5
+        z = 1.959963984540054
+        n = 100.0
+        espera_meia = (z / (1.0 + z * z / n)) * math.sqrt(0.25 / n + z * z / (4.0 * n * n))
+        self.assertAlmostEqual((hi - lo) / 2.0, espera_meia, places=9)
+        self.assertTrue(0.0 < lo < 0.5 < hi < 1.0)
+
+    def test_ic95_wilson_extremos_e_n_zero(self):
+        res = avaliar_experimento.calcular_metricas_epi(
+            {
+                "tudo_certo": {"tp": 30, "fp": 0, "fn": 0, "tn": 70},
+                "sem_positivos": {"tp": 0, "fp": 0, "fn": 0, "tn": 20},
+            })
+        perfeito = res["classes"]["tudo_certo"]
+        lo, hi = perfeito["precisao_ic95"]
+        self.assertTrue(0.0 < lo < hi <= 1.0)  # Wilson nunca toca 0 ou 1 com n finito
+        sem = res["classes"]["sem_positivos"]
+        self.assertIsNone(sem["precisao"])            # tp+fp = 0 → indefinida
+        self.assertEqual(sem["precisao_ic95"], (None, None))
+        self.assertAlmostEqual(sem["acuracia"], 1.0)
+
+    def test_contagens_invalidas(self):
+        with self.assertRaises(ValueError):
+            avaliar_experimento.calcular_metricas_epi({})
+        with self.assertRaises(ValueError):
+            avaliar_experimento.calcular_metricas_epi({"colete": {"tp": -1, "fp": 0, "fn": 0, "tn": 0}})
+        with self.assertRaises(ValueError):
+            avaliar_experimento.calcular_metricas_epi({"colete": {"tp": 1, "fp": 0, "fn": 0}})
+
+
+class TestErroPosicaoExperimento(unittest.TestCase):
+    """Etapa 7/Seção 12: erro em metros, p95 e faixas de distância."""
+
+    def test_erro_euclidiano_mediana_p95_e_faixas(self):
+        pontos = [
+            {"x_real_m": 0.0, "z_real_m": 0.0, "x_est_m": 0.0, "z_est_m": 0.0},    # erro 0.0, dist 0.0 → curta
+            {"x_real_m": 1.0, "z_real_m": 0.0, "x_est_m": 1.6, "z_est_m": 0.8},    # erro 1.0, dist 1.0 → curta
+            {"x_real_m": 0.0, "z_real_m": 6.0, "x_est_m": 1.2, "z_est_m": 7.6},    # erro 2.0, dist 6.0 → media
+            {"x_real_m": 0.0, "z_real_m": 11.0, "x_est_m": 1.8, "z_est_m": 13.4},  # erro 3.0, dist 11.0 → longa
+        ]
+        res = avaliar_experimento.avaliar_erro_posicao(pontos)
+        self.assertEqual(res["n"], 4)
+        self.assertAlmostEqual(res["media_m"], 1.5)
+        self.assertAlmostEqual(res["mediana_m"], 1.5)
+        self.assertAlmostEqual(res["p95_m"], 2.85)  # interpolação linear em [0,1,2,3]
+        self.assertAlmostEqual(res["maximo_m"], 3.0)
+        self.assertAlmostEqual(res["minimo_m"], 0.0)
+        self.assertAlmostEqual(res["desvio_padrao_m"], statistics.stdev([0.0, 1.0, 2.0, 3.0]))
+        faixas = res["faixas"]
+        self.assertEqual(faixas["curta"]["n"], 2)
+        self.assertAlmostEqual(faixas["curta"]["media_m"], 0.5)
+        self.assertAlmostEqual(faixas["curta"]["maximo_m"], 1.0)
+        self.assertEqual(faixas["media"]["n"], 1)
+        self.assertAlmostEqual(faixas["media"]["media_m"], 2.0)
+        self.assertEqual(faixas["longa"]["n"], 1)
+        self.assertAlmostEqual(faixas["longa"]["media_m"], 3.0)
+
+    def test_limites_de_faixa_5m_e_10m(self):
+        pontos = [
+            {"x_real_m": 1.0, "z_real_m": 0.0, "x_est_m": 1.0, "z_est_m": 0.0, "distancia_m": 4.9999},
+            {"x_real_m": 2.0, "z_real_m": 0.0, "x_est_m": 2.0, "z_est_m": 0.0, "distancia_m": 5.0},    # limítrofe → media
+            {"x_real_m": 3.0, "z_real_m": 0.0, "x_est_m": 3.0, "z_est_m": 0.0, "distancia_m": 10.0},   # limítrofe → media
+            {"x_real_m": 4.0, "z_real_m": 0.0, "x_est_m": 4.0, "z_est_m": 0.0, "distancia_m": 10.0001},
+        ]
+        res = avaliar_experimento.avaliar_erro_posicao(pontos)
+        self.assertEqual(res["faixas"]["curta"]["n"], 1)
+        self.assertEqual(res["faixas"]["media"]["n"], 2)
+        self.assertEqual(res["faixas"]["longa"]["n"], 1)
+
+    def test_projecao_via_calibracao(self):
+        # mesma fixture de TestProjecaoPlanta: H identidade → px=200, py=120
+        calibracao = {"camId": "1A", "H": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "frame": {"w": 720, "h": 480}}
+        pontos = [{"x_real_m": 5.0, "z_real_m": 0.0, "box_xyxy": (0, 0, 400, 120)}]
+        res = avaliar_experimento.avaliar_erro_posicao(pontos, calibracao=calibracao)
+        self.assertEqual(res["n"], 1)
+        self.assertAlmostEqual(res["erros_m"][0], 0.0, places=6)
+
+    def test_calibracao_descarta_projecoes_invalidas(self):
+        calibracao = {"camId": "1A", "H": [[1, 0, 0], [0, 1, 0], [0, 0, 1]], "frame": {"w": 720, "h": 480}}
+        pontos = [
+            {"x_real_m": 5.0, "z_real_m": 0.0, "box_xyxy": (0, 0, 400, 120)},
+            {"x_real_m": 1.0, "z_real_m": 1.0, "box_xyxy": None},  # projeção falha → ignorado
+        ]
+        res = avaliar_experimento.avaliar_erro_posicao(pontos, calibracao=calibracao)
+        self.assertEqual(res["n"], 1)
+        self.assertEqual(res["ignorados"], 1)
+
+    def test_erros_de_entrada(self):
+        with self.assertRaises(ValueError):
+            avaliar_experimento.avaliar_erro_posicao([])
+        with self.assertRaises(ValueError):
+            avaliar_experimento.avaliar_erro_posicao([{"x_real_m": 1.0}])
+        with self.assertRaises(ValueError):
+            avaliar_experimento.avaliar_erro_posicao([{"x_real_m": 1.0, "z_real_m": 2.0}])  # sem x_est/z_est
+
+
+class TestEstabilidadeTrilhasExperimento(unittest.TestCase):
+    """Etapa 7/Seção 12: ID switches/min, fragmentação e associação EPI→pessoa."""
+
+    def _eventos(self):
+        eventos = []
+        trilha = {"A": 1, "B": 2}
+        for passo in range(100):
+            t = passo * 6.0  # 600 s ≈ 10 min
+            if passo == 50:
+                trilha["A"] = 101  # troca deliberada de ID da pessoa A
+            if passo == 75:
+                trilha["B"] = 202  # troca deliberada de ID da pessoa B
+            for pessoa in ("A", "B"):
+                eventos.append({
+                    "t": t + (0 if pessoa == "A" else 2.0),
+                    "pessoa": pessoa,
+                    "track_id": trilha[pessoa],
+                    "com_multiplas_pessoas": True,
+                    "epi_para_dono": passo % 10 != 0,  # 90 % de acerto sintético
+                })
+        return eventos
+
+    def test_id_switches_e_fragmentacao(self):
+        res = avaliar_experimento.avaliar_estabilidade_trilhas(self._eventos())
+        self.assertEqual(res["n_eventos"], 200)
+        self.assertEqual(res["n_identidades"], 2)
+        self.assertEqual(res["id_switches"], 2)
+        self.assertEqual(res["trilhas_totais"], 4)
+        self.assertAlmostEqual(res["fragmentacao_trilha"], 2.0)
+        self.assertAlmostEqual(res["id_switches_por_min"], 2.0 / (596.0 / 60.0), places=6)
+
+    def test_associacao_epi_pessoa(self):
+        res = avaliar_experimento.avaliar_estabilidade_trilhas(self._eventos())
+        self.assertEqual(res["frames_multiplas_pessoas"], 200)
+        self.assertEqual(res["associacao_epi_avaliada"], 200)
+        self.assertEqual(res["associacao_epi_correta"], 180)
+        self.assertAlmostEqual(res["associacao_epi_correta_pct"], 90.0)
+
+    def test_entrada_vazia(self):
+        with self.assertRaises(ValueError):
+            avaliar_experimento.avaliar_estabilidade_trilhas([])
+
+
+class TestDesempenhoExperimento(unittest.TestCase):
+    """Etapa 7/Seção 12: latência mediana/p95, FPS e estabilidade de recursos."""
+
+    def test_latencia_fps_e_memoria(self):
+        amostras = [10.0, 20.0, 30.0, 40.0, 50.0]
+        snaps = [
+            {"fps": 10.0, "msPorQuadro": 100.0, "geometrias": 100, "texturas": 50,
+             "chamadas": 200, "triangulos": 90000},
+            {"fps": 30.0, "msPorQuadro": 33.3, "geometrias": 105, "texturas": 50,
+             "chamadas": 220, "triangulos": 92000},
+            {"fps": 20.0, "msPorQuadro": 50.0, "geometrias": 105, "texturas": 50,
+             "chamadas": 210, "triangulos": 91000},
+        ]
+        res = avaliar_experimento.avaliar_desempenho(amostras, snaps)
+        lat = res["latencia_ms"]
+        self.assertEqual(lat["n"], 5)
+        self.assertAlmostEqual(lat["mediana_ms"], 30.0)
+        self.assertAlmostEqual(lat["media_ms"], 30.0)
+        self.assertAlmostEqual(lat["desvio_padrao_ms"], statistics.stdev(amostras))
+        self.assertAlmostEqual(lat["p95_ms"], 48.0)  # interpolação linear
+        self.assertAlmostEqual(lat["minimo_ms"], 10.0)
+        self.assertAlmostEqual(lat["maximo_ms"], 50.0)
+        self.assertAlmostEqual(res["fps_medio"], 20.0)
+        self.assertAlmostEqual(res["fps_min"], 10.0)
+        self.assertAlmostEqual(res["fps_max"], 30.0)
+        self.assertEqual(res["snapshots"], 3)
+
+        geo = res["geometrias"]
+        self.assertEqual((geo["inicial"], geo["final"], geo["delta"], geo["maximo"]), (100, 105, 5, 105))
+        self.assertTrue(geo["crescimento_monotonico"])
+        tex = res["texturas"]
+        self.assertEqual(tex["delta"], 0.0)
+        self.assertFalse(tex["crescimento_monotonico"])
+
+    def test_apenas_latencia(self):
+        res = avaliar_experimento.avaliar_desempenho([15.0, 25.0], [])
+        self.assertIsNotNone(res["latencia_ms"])
+        self.assertEqual(res["snapshots"], 0)
+        self.assertIsNone(res["fps_medio"])
+
+    def test_apenas_snapshots(self):
+        res = avaliar_experimento.avaliar_desempenho([], [{"fps": 30.0}])
+        self.assertIsNone(res["latencia_ms"])
+        self.assertEqual(res["snapshots"], 1)
+
+    def test_vazio_levanta_erro(self):
+        with self.assertRaises(ValueError):
+            avaliar_experimento.avaliar_desempenho([], [])
+
+
+class TestRelatorioMarkdown(unittest.TestCase):
+    """Etapa 7/Seção 12: o relatório distingue dados reais de --demo."""
+
+    def test_demo_vem_etiquetado_como_sintetico(self):
+        md = avaliar_experimento.gerar_relatorio_markdown(avaliar_experimento.dados_demo())
+        self.assertIn("DADOS SINTÉTICOS", md)
+        self.assertIn("--demo", md)
+
+    def test_arquivo_real_vem_etiquetado_e_identifica_fonte(self):
+        md = avaliar_experimento.gerar_relatorio_markdown({
+            "origem": {"tipo": "arquivo", "fonte": "coleta_2026-11.json"},
+            "contagens_epi": {"capacete": {"tp": 45, "fp": 5, "fn": 10, "tn": 40}},
+        })
+        self.assertNotIn("DADOS SINTÉTICOS", md)
+        self.assertIn("arquivo real `coleta_2026-11.json`", md)
+
+    def test_relatorio_demo_completo_tem_tabelas(self):
+        md = avaliar_experimento.gerar_relatorio_markdown(avaliar_experimento.dados_demo())
+        for eixo in ("Classe", "Precisão [IC 95 %]", "Revocação [IC 95 %]", "F1",
+                     "Média ± DP", "p95", "Faixa", "curta (< 5 m)", "ID switches por minuto",
+                     "Fragmentação de trilha", "FPS médio", "Geometrias", "Crescimento monotônico?",
+                     "Limitações e interpretação"):
+            self.assertIn(eixo, md)
+        self.assertIn("micro (todas as classes)", md)
+
+    def test_secoes_sem_dados_viram_nota_nao_inventadas(self):
+        md = avaliar_experimento.gerar_relatorio_markdown({
+            "origem": {"tipo": "arquivo", "fonte": "coleta.json"},
+        })
+        self.assertIn("Sem dados", md)
+        self.assertIn("Dados não fornecidos", md)
+
+    def test_bloco_invalido_e_reportado_inline(self):
+        md, erros = avaliar_experimento._relatorio({  # noqa: SLF001 — contrato interno do módulo
+            "origem": {"tipo": "arquivo", "fonte": "coleta.json"},
+            "contagens_epi": {"capacete": {"tp": "lixo", "fp": 0, "fn": 0, "tn": 0}},
+        })
+        self.assertGreaterEqual(erros, 1)
+        self.assertIn("Seções com dados inválidos", md)
 
 
 if __name__ == "__main__":

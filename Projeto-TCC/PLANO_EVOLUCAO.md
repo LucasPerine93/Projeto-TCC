@@ -200,10 +200,11 @@ Apresentação no TCC: tabelas com média ± desvio e n, gráficos de latência 
 4. Tabela de trajetória + replay real. *Depende de:* 2 e 3.
 5. Mapa de calor por exposição e tempo de exposição. *Depende de:* 2, 3 e das lacunas "sem dados".
 6. Revisar `verificar_area_risco` (ponto do chão) e `associar_trilhas` (atribuição global) com dados anotados. *Depende de:* conjunto de teste (seção 12). **Concluído:** `verificar_area_risco` usa a base central do operário (Etapa 3) e `associar_trilhas` faz atribuição global gulosa por placar (Etapa 6), com desempate por recência (≤ 3 s), ambiguidade (`MARGEM_AMBIGUIDADE`) e `TEMPO_VIDA_TRILHA` mantido.
-7. Protocolo de validação e coleta. Em paralelo com 2–6.
+7. Protocolo de validação e coleta. Em paralelo com 2–6. **Concluído (infraestrutura):** `tools/avaliar_experimento.py` implementa a seção 12 ponta a ponta — FP/FN por classe com **IC 95 % de Wilson** (agregado micro), erro de posição em m com p95 e faixas `< 5 m` / `5–10 m` / `> 10 m`, ID switches/min + fragmentação + % de associação EPI→pessoa, e latência mediana/p95 + FPS/ms-quadro + Δ de geometrias/texturas (`GemeoPerf.snapshot()`); `--demo` / `--input coleta.json` / `--output relatorio_validacao.md` geram o relatório Markdown com as tabelas da monografia (cabeçalho declara a origem dos dados; seções ausentes viram "Sem dados", nunca inventadas). A **coleta física** (fita métrica, ≥ 300 imagens/classe, 4–8 h ligado) ainda exige o ambiente real e fica como etapa de execução — nenhum número foi medido ainda.
 8. Assistente de IA conectado (somente leitura). *Depende de:* 3 e 5 para respostas úteis. **Concluído:** `POST /assistente` (sessão do painel) com motor local offline em `assistente.py` (ou LLM externo opcional via `ASSISTENTE_LLM_URL`), lendo apenas `calcular_dados_dashboard`/`dados_ocorrencias`/`obter_mapa_calor`; zonas críticas devolvem `acao.tipo = "focar_gemeo"` e o botão "Ver região no Gêmeo 3D" abre a aba com o mapa de calor ligado.
 
 ## 15. Como testar o que foi feito
-* Unitários: `python3 -m pytest -q` (54) e `node tests/js/test_fonte_dados.js` (10).
+* Unitários: `python3 -m pytest -q` (75) e `node tests/js/test_fonte_dados.js` (10).
+* Relatório de validação (Seção 12/14): `python tools/avaliar_experimento.py --demo` valida o formato com dados sintéticos (não citáveis); o relatório final exige `--input coleta.json`.
 * Modo real sem hardware: `python3 tools/ws_teste_gemeo.py` e, na aba Gêmeo 3D → botão de fonte → "Avançado" → `ws://localhost:8000/ws`.
 * A aba só funciona com o **site inteiro** servido pelo App Lab (ela usa `libs/three.min.js` local; sem internet).
