@@ -1,6 +1,39 @@
+/* =========================================================================
+   motor.js — Núcleo do Gêmeo 3D (Three.js + CV + Replay + Calibração)
+   -------------------------------------------------------------------------
+   Controla TODA a lógica 3D do gêmeo digital. Carregado como script clássico
+   (sem módulos) depois de Three.js e dos demais arquivos em js/gemeo/, dentro
+   de um IIFE para não vazar nada para o escopo global (só GemeoMotor e
+   window.__GEMEO_3D vistos por interface.js e pela tela).
+
+   ÍNDICE NUMERADO DE SUBSISTEMAS (a ordem abaixo é a ordem física do arquivo;
+   os subsistemas 3 a 7 vivem dentro da megafunção initTwin, por isso seus
+   divisores aparecem indentados no meio dela):
+
+   1. ESCALA E ESTADO — constantes W/H/B, grades 80x60, mundo 40x30 m,
+      câmeras CAMS, canvas da planta e estado da visão computacional.
+   2. VISÃO COMPUTACIONAL 2D E LIMPEZA DE PLANTA — drawSample(), scanPlan()
+      (limiar adaptativo + detecção de portais), fechamento morfológico e
+      desenho ao vivo na planta.
+   3. CONSTRUÇÃO 3D E GREEDY MESHING — initTwin(): cena Three.js, paredes
+      extrudadas PBR, pilares, piso, teto e malha agrupada por material.
+   4. POOL DE AVATARES E TOTENS TÁCTICOS — createWorker(): avatar Layer 1
+      (CCTV) e totem Layer 2 (mapa 3D), estados de EPI/risco e billboards.
+   5. CÂMERAS PTZ E MONITOR CCTV — CAM 1A/1B/2A, fov/pos/target, CanvasTexture
+      do monitor, câmera orbital e seletor de câmeras.
+   6. MAPA DE CALOR E REPLAY CAIXA-PRETA — heatGrid/heatTex, carimbo de
+      exposição/taxa e replay temporal de trilha (trailFor / playReplay).
+   7. CALIBRADOR DE HOMOGRAFIA E SNAPSHOT — 4 cliques imagem<->planta, matriz H,
+      persistência em localStorage + sincronia GET/POST /calibracao.
+   8. PONTE DE DADOS REAIS E LOOP DE RENDERIZAÇÃO — fonte simulada vs. real
+      (GemeoFonte.criarFonte), setRealData() e o laço animate().
+   ========================================================================= */
 (function () {
   'use strict';
 
+  // =========================================================================
+  // ===== 1. ESCALA E ESTADO =====
+  // =========================================================================
   // ---------- Constantes de escala ----------
   const W = 320, H = 240, B = 4;                 // canvas 2D e bloco de varredura (4x4 px)
   const COLS = W / B, ROWS = H / B;              // grade de 80 x 60 blocos
@@ -38,7 +71,7 @@
       return r.json();
     });
   }
-
+  // ---------- Canvas da planta e da sobreposição ----------
   const plan = $('plan'), ctx = plan.getContext('2d', { willReadFrequently: true });
   const ov = $('overlay'), octx = ov.getContext('2d');
   const rawUploadCanvas = document.createElement('canvas');
@@ -46,7 +79,7 @@
   const rawUploadCtx = rawUploadCanvas.getContext('2d', { willReadFrequently: true });
   let hasRawUpload = false;
 
-  // ---------- Estado da visÃ£o computacional ----------
+  // ---------- Estado da visão computacional ----------
   const wallGrid = new Uint8Array(COLS * ROWS);
   const riskGrid = new Uint8Array(COLS * ROWS);
   const doorGrid = new Uint8Array(COLS * ROWS);  // cÃ©lulas onde a CV detectou vÃ£o de porta/passagem
@@ -57,8 +90,9 @@
   let source = 'planta de exemplo', dirty = false, twin = null;
   let activeCam = 0, wallAtStart = 0;
   const camYaw = CAMS.map((d) => Math.atan2(d.target[2] - d.pos[2], d.target[0] - d.pos[0]));
-
-  // ---------- Replay "caixa-preta": ganchos preenchidos pelo gÃªmeo 3D ----------
+  // =========================================================================
+  // ---------- Replay "caixa-preta" e calibração: ganchos dos subsistemas 6 e 7 ----------
+  // (o código desses dois subsistemas vive dentro de initTwin)
   let trailFor = null, playReplay = null;
   const calibs = CAMS.map(() => null);                 // homografia por cÃ¢mera: { world, img, plan, H }
   const calibState = { on: false, cur: null };         // calibraÃ§Ã£o em andamento (pontos clicados)
@@ -78,7 +112,7 @@
       }
     }).catch(() => { /* backend indisponivel */ });
   } catch (e) { /* fetch nao disponivel */ }
-  } catch (e) { /* localStorage indisponÃ­vel ou dados corrompidos */ }
+  } catch (e) { /* localStorage indisponível ou dados corrompidos */ }
 
   // ---------- Registro de eventos ----------
   const logEl = $('log');
@@ -103,6 +137,9 @@
       logEl.appendChild(li);
     });
   }
+  // =========================================================================
+  // ===== 2. VISÃO COMPUTACIONAL 2D E LIMPEZA DE PLANTA =====
+  // =========================================================================
 
   // ---------- Planta de exemplo ----------
   function drawSample() {
@@ -499,6 +536,9 @@
     bannerKey = key;
     bannerEl.dataset.state = state; bTitle.textContent = title; bSub.textContent = sub;
   }
+  // =========================================================================
+  // ===== 3. CONSTRUÇÃO 3D E GREEDY MESHING =====
+  // =========================================================================
 
   // ---------- GÃªmeo Digital 3D v5.0 (Three.js + PBR + ExtrusÃ£o ArquitetÃ´nica) ----------
   function initTwin() {
@@ -768,6 +808,9 @@
       updateWallAux();
       $('riskAux').textContent = 'â‰ˆ ' + f1(riskCount * CELL * CELL) + ' mÂ² Â· ' + riskZonesCount + ' zona(s)';
     }
+  // =========================================================================
+  // ===== 4. POOL DE AVATARES E TOTENS TÁCTICOS =====
+  // =========================================================================
 
     // ---------- OperÃ¡rios (Layer 1 para CCTV + Totens na Layer 2 para Mapa 3D) ----------
     const SHIRT_HEX = 0x3b4552, VEST_HEX = 0xa3e635, VEST_EMISSIVE = 0x1f3a00, ALERT_RED = 0xef4444, ALERT_GLOW = 0xb91c1c;
@@ -1226,6 +1269,9 @@
         if (state !== 'bad') { T.ring.scale.set(1, 1, 1); T.diamond.scale.setScalar(1); }
       });
     }
+  // =========================================================================
+  // ===== 5. CÂMERAS PTZ E MONITOR CCTV =====
+  // =========================================================================
 
     // ---------- CÃ¢meras de SeguranÃ§a + Monitor CCTV ----------
     let mainW = 1, mainH = 1;
@@ -1578,7 +1624,8 @@
     const toPlanPx = (x, z) => [(x + WW / 2) * (W / WW), (z + WH / 2) * (H / WH)];
     const ptEl = (id) => $(id);
 
-    // ---- 1. mapa de calor histÃ³rico ----
+    // ===== 6. MAPA DE CALOR E REPLAY CAIXA-PRETA =====
+    // ---- 1. mapa de calor histórico ----
     const HEAT_MAX = 22;
     const heatGrid = new Float32Array(COLS * ROWS);
     const heatCv = document.createElement('canvas'); heatCv.width = COLS; heatCv.height = ROWS;
@@ -1744,6 +1791,7 @@
       if (p >= 1) { if (!rpl.end) rpl.end = t; if (t - rpl.end > 4) clearReplay(); }
     }
 
+    // ===== 7. CALIBRADOR DE HOMOGRAFIA E SNAPSHOT =====
     // ---- 3. calibrador de homografia (4 pontos) ----
     function solveH(src, dst) {                      // imagem -> planta; resolve o sistema 8x8 por eliminaÃ§Ã£o de Gauss
       const A = [];
@@ -2077,6 +2125,9 @@
     if (window.ResizeObserver) new ResizeObserver(resize).observe(viewer);
     window.addEventListener('resize', resize);
     resize();
+  // =========================================================================
+  // ===== 8. PONTE DE DADOS E LOOP DE RENDERIZAÇÃO =====
+  // =========================================================================
 
     // ---------- LaÃ§o Principal ----------
     const clock = new THREE.Clock();
@@ -2221,7 +2272,9 @@
     if (k >= 0 && $('viewer').offsetParent) setCam(k);
   });
 
-  // ---------- InicializaÃ§Ã£o ----------
+  // ---------- Inicialização ----------
+  // Desenha a planta de exemplo, sobe o gêmeo 3D e liga o laço de renderização
+  // (detalhes em animate(), dentro de initTwin, na seção 8).
   drawSample();
   try {
     if (typeof THREE === 'undefined') throw new Error('Three.js nÃ£o carregou');

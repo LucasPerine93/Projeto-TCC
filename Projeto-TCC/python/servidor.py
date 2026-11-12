@@ -1,3 +1,29 @@
+"""servidor.py — Rotas HTTP/WebSocket, WebUI e telemetria do gêmeo 3D.
+
+Papel do arquivo
+----------------
+Sobe a interface web do painel no Arduino App Lab (``WebUI``/FastAPI),
+persiste e expõe a calibração do gêmeo, guarda o último frame da câmera em
+memória (``/snapshot``) e emite a telemetria de EPIs para o frontend em no
+máximo ~5 Hz (``telemetria_gemeo``) — além de registrar as rotas REST de
+segurança, painel, ocorrências, trajetória, mapa de calor e assistente.
+
+Entradas / Saídas
+-----------------
+- Entrada: mensagens do frontend (``ui.on_message``), requisições HTTP
+  (``ui.expose_api``) e chamadas internas do detector (``enviar_telemetria``).
+- Saída: respostas JSON/JPEG e mensagens WebSocket com o estado do canteiro.
+
+Índice de seções
+----------------
+1. Estado global, WebUI e rate-limit de telemetria (``enviar_telemetria`` 5 Hz)
+2. Captura de ``/snapshot`` e persistência de ``/calibracao`` (helpers)
+3. Rotas REST: autenticação, painel, ocorrências, trajetória, mapa de calor
+   e assistente (registradas nos ``ui.on_message``/``ui.expose_api``)
+
+``box_risco``/``risco`` e ``_ultimo_frame_jpeg`` são estado compartilhado
+entre o detector (câmera) e o frontend — por isso são globais do módulo.
+"""
 import time
 import os
 import json
@@ -8,16 +34,96 @@ import banco
 import assistente
 import seguranca
 
+# ===== 1. ESTADO GLOBAL, WEBUI E RATE-LIMIT DE TELEMETRIA =====
+# Estado compartilhado com o detector.py (câmera marca a área; aqui ela é
+# lida para devolver a moldura ao frontend quando pedido).
 box_risco = None
 risco = False
 
-# ---------------------------------------------------------------------------
-# Buffer do último frame capturado pela câmera (para /snapshot)
-# ---------------------------------------------------------------------------
-_ultimo_frame_jpeg = None  # bytes JPEG do frame mais recente
-
 # Caminho do arquivo de persistência da calibração do Gêmeo 3D
 CALIBRACAO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibracao_gemeo.json")
+
+# Instância única do servidor Web (rotas e WebSocket registradas no fim).
+ui = WebUI()
+
+
+def calcular_area(_, data):
+    """Frontend marca o perímetro da área de risco com o mouse (mensagem area_marcada)."""
+    global box_risco, risco
+    box_risco = [data["x1"], data["y1"], data["x2"], data["y2"]]
+    risco = True
+
+def limpar_box_risco(*args):
+    """Apaga a moldura da área de risco (mensagem limpar_box_risco)."""
+    global box_risco, risco
+    box_risco = None
+    risco = False
+
+def enviar_log(mensagem):
+    """Encaminha uma linha de log do detector para o console do painel (log_deteccao)."""
+    ui.send_message("log_deteccao", mensagem)
+
+# Rate-limit de telemetria: no máximo um quadro a cada 0,2 s (~5 Hz), com
+# ``sequence`` crescente para o frontend detectar perdas de pacote.
+_ui_telemetria_ultimo = 0.0
+_telemetria_sequencia = 0
+
+def enviar_telemetria(operarios):
+    """Envia um quadro de telemetria do Gêmeo 3D em no máximo ~5 Hz.
+
+    ``track_id`` é uma trilha efêmera, não uma identidade civil. Quadros vazios
+    são enviados quando permitido pelo limite de taxa para que o cliente saiba
+    que a fonte real permanece ativa mesmo sem pessoas na câmera.
+    """
+    global _ui_telemetria_ultimo, _telemetria_sequencia
+
+    agora = time.time()
+    if agora - _ui_telemetria_ultimo < 0.2:
+        return False
+
+    _ui_telemetria_ultimo = agora
+    _telemetria_sequencia += 1
+    workers = []
+
+    for operario in operarios:
+        if operario.track_id is None:
+            continue
+
+        dados = {
+            "id": str(operario.track_id),
+            "bbox": list(operario.box_xyxy),
+            "ppe": {
+                "helmet": bool(operario.tem_capacete),
+                "vest": bool(operario.tem_colete),
+            },
+            "confidence": {
+                "person": operario.conf_pessoa,
+                "helmet": operario.conf_capacete,
+                "vest": operario.conf_colete,
+            },
+            "inRisk": bool(operario.risco_detectado),
+        }
+        # Posição na planta (metros, origem no centro) — Etapa 3: só quando há calibração
+        if getattr(operario, "pos_x_m", None) is not None and getattr(operario, "pos_z_m", None) is not None:
+            dados["position"] = {"x": operario.pos_x_m, "z": operario.pos_z_m}
+        workers.append(dados)
+
+    ui.send_message("telemetria_gemeo", {
+        "source": "real",
+        "timestamp": int(agora * 1000),
+        "sequence": _telemetria_sequencia,
+        "frame": {"w": 720, "h": 480},
+        "workers": workers,
+    })
+    return True
+
+
+# ===== 2. CAPTURA DE /snapshot E PERSISTÊNCIA DE /calibracao =====
+# Helpers compartilhados pela rota /snapshot e pelo calibrador do gêmeo.
+# ``/snapshot`` devolve o último frame JPEG da câmera; se não houver câmera
+# (lib antiga/ambiente de teste), cai numa foto de evidência e por fim num
+# frame padrão com grade de calibração.
+_ultimo_frame_jpeg = None  # bytes JPEG do frame mais recente
 
 
 def atualizar_ultimo_frame(jpeg_bytes):
@@ -94,73 +200,8 @@ def _salvar_calibracao(dados):
         return False
 
 
-ui = WebUI()
-
-def calcular_area(_, data):
-    global box_risco, risco
-    box_risco = [data["x1"], data["y1"], data["x2"], data["y2"]]
-    risco = True
-
-def limpar_box_risco(*args):
-    global box_risco, risco
-    box_risco = None
-    risco = False
-
-def enviar_log(mensagem):
-    ui.send_message("log_deteccao", mensagem)
-
-_ui_telemetria_ultimo = 0.0
-_telemetria_sequencia = 0
-
-def enviar_telemetria(operarios):
-    """Envia um quadro de telemetria do Gêmeo 3D em no máximo ~5 Hz.
-
-    ``track_id`` é uma trilha efêmera, não uma identidade civil. Quadros vazios
-    são enviados quando permitido pelo limite de taxa para que o cliente saiba
-    que a fonte real permanece ativa mesmo sem pessoas na câmera.
-    """
-    global _ui_telemetria_ultimo, _telemetria_sequencia
-
-    agora = time.time()
-    if agora - _ui_telemetria_ultimo < 0.2:
-        return False
-
-    _ui_telemetria_ultimo = agora
-    _telemetria_sequencia += 1
-    workers = []
-
-    for operario in operarios:
-        if operario.track_id is None:
-            continue
-
-        dados = {
-            "id": str(operario.track_id),
-            "bbox": list(operario.box_xyxy),
-            "ppe": {
-                "helmet": bool(operario.tem_capacete),
-                "vest": bool(operario.tem_colete),
-            },
-            "confidence": {
-                "person": operario.conf_pessoa,
-                "helmet": operario.conf_capacete,
-                "vest": operario.conf_colete,
-            },
-            "inRisk": bool(operario.risco_detectado),
-        }
-        # Posição na planta (metros, origem no centro) — Etapa 3: só quando há calibração
-        if getattr(operario, "pos_x_m", None) is not None and getattr(operario, "pos_z_m", None) is not None:
-            dados["position"] = {"x": operario.pos_x_m, "z": operario.pos_z_m}
-        workers.append(dados)
-
-    ui.send_message("telemetria_gemeo", {
-        "source": "real",
-        "timestamp": int(agora * 1000),
-        "sequence": _telemetria_sequencia,
-        "frame": {"w": 720, "h": 480},
-        "workers": workers,
-    })
-    return True
-
+# ===== 3. ROTAS REST — AUTENTICAÇÃO, PAINEL, OCORRÊNCIAS, TRAJETÓRIA, CALOR E ASSISTENTE =====
+# Mensagens em tempo real (WebSocket/ui.on_message)...
 ui.on_message('area_marcada', calcular_area)
 ui.on_message("limpar_box_risco", limpar_box_risco)
 ui.on_message('retornar_box_risco', lambda *args : ui.send_message("box_risco", box_risco))
@@ -223,6 +264,7 @@ def _post_calibracao(req):
     return {"erro": "falha ao gravar calibracao"}, 500
 
 
+# Rotas /calibracao — GET lê, POST grava (com os 5 campos obrigatórios).
 ui.expose_api("GET", "/calibracao", _get_calibracao)
 ui.expose_api("POST", "/calibracao", _post_calibracao)
 

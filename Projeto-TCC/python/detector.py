@@ -1,3 +1,36 @@
+"""detector.py — Detecção de EPIs e pipeline de decisão do canteiro.
+
+Papel do arquivo
+----------------
+Transforma as detecções brutas do YOLO de EPIs (capacete/colete/pessoa) num
+quadro estruturado do canteiro: associa EPIs a trabalhadores, avalia área de
+risco pelo ponto de contato dos pés, projeta a posição na planta do gêmeo
+3D, mantém trilhas efêmeras (``track_id``), amostra trajetórias (2 Hz, janela
+de ±15 s), acumula exposição por célula do mapa de calor e persiste
+ocorrências/amostras para o painel e a monografia.
+
+Entradas / Saídas
+-----------------
+- Entrada: ``operario_detectado`` (callback da câmera — dict de specs do
+  YOLO, com ou sem frame, para lib nova e lib antiga 6735581).
+- Saída: lista de ``Operario`` por frame + efeitos colaterais isolados por
+  ``_executar_seguro`` (telemetria do gêmeo, gravação SQLite, fotos,
+  amostragem estatística) — nenhuma etapa derruba a câmera.
+
+Índice de seções
+----------------
+1. Constantes, configuração e modelo ``Operario`` (imports, câmera/YOLO,
+   conversão NumPy -> tipos nativos)
+2. Geometria, EPIs e área de risco — ponto de contato dos pés (``y2``)
+3. Projeção homográfica 2D -> Planta 3D (``projetar_pe_para_planta``)
+4. Rastreamento e atribuição global de trilhas (``associar_trilhas``)
+5. Buffer circular de trajetória (2 Hz, ±15 s) e exposição por célula
+6. Pipeline principal (``organizar_dado`` e ``filtrar_salvamento``)
+   + callback da câmera (``operario_detectado``)
+
+Nada aqui identifica pessoas civilmente: ``track_id`` é continuidade
+geométrica entre frames consecutivos, nunca identidade estável.
+"""
 from arduino.app_bricks.video_objectdetection import VideoObjectDetection
 from arduino.app_peripherals.camera import Camera
 
@@ -11,6 +44,10 @@ import servidor
 import banco
 import amostragem
 
+# ===== 1. CONSTANTES, CONFIGURAÇÃO E MODELO OPERARIO =====
+# Câmera fixa (fonte = índice de dispositivo) e objeto de detecção YOLO.
+# A lib moderna aceita ``camera_preview`` e devolve o frame no callback;
+# a lib antiga (pin 6735581) não — por isso o try/except no fallback.
 camera = Camera(source=config.CAMERA_SOURCE, resolution=config.CAMERA_RESOLUTION, fps=config.CAMERA_FPS)
 try:
     deteccao = VideoObjectDetection(
@@ -30,6 +67,8 @@ except TypeError:
 
 @dataclass
 class Operario:
+    """Trabalhador visto no frame atual (caixa, EPIs, risco, trilha, posição)."""
+
     box_xyxy: tuple
     tem_colete: bool = False
     tem_capacete: bool = False
@@ -67,6 +106,8 @@ ZONA_COLETE = config.ZONA_COLETE
 # ---------------------------------------------------------------------------
 # Conversões seguras (NumPy -> tipos nativos)
 # ---------------------------------------------------------------------------
+# O YOLO devolve escalares/arrays NumPy; o backend inteiro espera tipos nativos
+# serializáveis (json.dump, banco). Cada função abaixo normaliza uma forma.
 def _to_float(val, default=0.0):
     """Converte ``val`` em ``float`` nativo ou devolve ``default``.
 
@@ -156,9 +197,37 @@ def _get_pessoa(specs_frame: dict) -> list[dict]:
     return [p for p in pessoas if isinstance(p, dict)]
 
 
-# ---------------------------------------------------------------------------
-# Projeção do ponto dos pés para a planta do gêmeo 3D (Etapa 3)
-# ---------------------------------------------------------------------------
+# ===== 2. GEOMETRIA, EPIs E ÁREA DE RISCO (PONTO DE CONTATO DOS PÉS) =====
+def verificar_area_risco(box_risco, box_pessoa) -> bool:
+    """O operário está na área de risco? Decide pelo ponto de contato com o
+    piso: base vertical (``y2``) e centro horizontal da caixa da pessoa."""
+    if not box_risco or not box_pessoa:
+        return False
+
+    px1, py1, px2, py2 = box_pessoa
+    rx1, ry1, rx2, ry2 = box_risco
+    # Ponto de contato com o piso: centro horizontal da caixa, base vertical (y2)
+    px_base = (px1 + px2) / 2
+    py_base = py2
+    return rx1 <= px_base <= rx2 and ry1 <= py_base <= ry2
+
+
+def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
+    """O EPI pertence ao operário? O centro do EPI precisa cair dentro da
+    largura da pessoa e na faixa vertical ``local_corpo`` (cabeça ou tronco)."""
+    ox1, oy1, ox2, oy2 = box_operario
+    ex1, ey1, ex2, ey2 = box_epi
+    altura = abs(oy1 - oy2)
+    centro_x_epi = (ex1 + ex2) / 2
+    centro_y_epi = (ey1 + ey2) / 2
+    zona_topo = oy1 + local_corpo[0] * altura
+    zona_base = oy1 + local_corpo[1] * altura
+    return ox1 <= centro_x_epi <= ox2 and zona_topo <= centro_y_epi <= zona_base
+
+
+# ===== 3. PROJEÇÃO HOMOGRÁFICA 2D -> PLANTA 3D =====
+# Homografia H (3x3) casa o frame da câmera com a planta 320x240 px do gêmeo;
+# a escala da planta é PLANTA_LARGURA_M x PLANTA_ALTURA_M metros (40 x 30 m).
 PLANTA_LARGURA_M = 40.0
 PLANTA_ALTURA_M = 30.0
 MAPA_COLUNAS = 80
@@ -216,299 +285,7 @@ def _obter_calibracao():
         return None
 
 
-# ---------------------------------------------------------------------------
-# Buffer circular de trajetória (Etapa 4 — replay real)
-# ---------------------------------------------------------------------------
-_TRAJETORIA_BUFFER = {}        # track_id -> deque(maxlen=30) de pontos
-_ULTIMA_AMOSTRA_TRAJETORIA = {}  # track_id -> monotonic
-_TRILHA_EM_EVENTO = {}         # track_id -> {"ocorrencia_id": int, "t_inicio": ms}
-_ULTIMA_AMOSTRA_EXPOSICAO = None
-_FLUSH_EXPOSICAO = 0.0
-_ACUMULADO_EXPOSICAO = {}      # celula_idx -> [presenca_s, infracao_s, eventos]
-
-
-def _ponto_trajetoria(op):
-    return {
-        "t_ms": int(time.monotonic() * 1000),
-        "x_m": op.pos_x_m,
-        "z_m": op.pos_z_m,
-        "helmet": 1 if op.tem_capacete else 0,
-        "vest": 1 if op.tem_colete else 0,
-        "in_risk": 1 if op.risco_detectado else 0,
-    }
-
-
-def _amostrar_trajetoria(lista_operarios):
-    """Amostra pontos de trajetória a no máximo 2 Hz (0.5 s), buffer de 30."""
-    if not lista_operarios:
-        return
-    agora = time.monotonic()
-    for op in lista_operarios:
-        if getattr(op, "track_id", None) is None or op.pos_x_m is None or op.pos_z_m is None:
-            continue
-        ultima = _ULTIMA_AMOSTRA_TRAJETORIA.get(op.track_id, 0.0)
-        if agora - ultima < 0.5:
-            continue
-        _ULTIMA_AMOSTRA_TRAJETORIA[op.track_id] = agora
-        ponto = _ponto_trajetoria(op)
-        buffer = _TRAJETORIA_BUFFER.setdefault(op.track_id, [])
-        buffer.append(ponto)
-        if len(buffer) > 30:
-            buffer.pop(0)
-        # Enquanto a trajetória está vinculada a um evento, os pontos novos
-        # já vão direto ao banco (janela de +15 s após a ocorrência).
-        evento = _TRILHA_EM_EVENTO.get(op.track_id)
-        if evento and (ponto["t_ms"] - evento["t_inicio"]) <= 15000:
-            try:
-                banco.salvar_pontos_trajetoria(evento["ocorrencia_id"], [ponto])
-            except Exception as exc:
-                _registrar_falha(f"falha ao salvar ponto de trajetoria: {exc!r}")
-        elif evento:
-            _TRILHA_EM_EVENTO.pop(op.track_id, None)
-
-
-def _vincular_trilha(track_id, ocorrencia_id):
-    """Persiste o buffer recém-amostrado e marca a trilha como em evento."""
-    pontos = list(_TRAJETORIA_BUFFER.get(track_id, []))
-    if pontos:
-        try:
-            banco.salvar_pontos_trajetoria(ocorrencia_id, pontos)
-        except Exception as exc:
-            _registrar_falha(f"falha ao salvar buffer de trajetoria: {exc!r}")
-    # Os pontos do buffer já estão gravados; limpá-lo evita gravar os mesmos
-    # pontos de novo caso a mesma trilha gere outra ocorrência depois do cooldown.
-    _TRAJETORIA_BUFFER[track_id] = []
-    _TRILHA_EM_EVENTO[track_id] = {"ocorrencia_id": ocorrencia_id, "t_inicio": int(time.monotonic() * 1000)}
-
-
-def _acumular_exposicao(lista_operarios):
-    """Acumula presença/infração por célula e descarrega a cada ~1 s."""
-    global _ULTIMA_AMOSTRA_EXPOSICAO, _FLUSH_EXPOSICAO
-    agora = time.monotonic()
-    if _ULTIMA_AMOSTRA_EXPOSICAO is None:
-        _ULTIMA_AMOSTRA_EXPOSICAO = agora
-        return
-    dt = min(2.0, max(0.0, agora - _ULTIMA_AMOSTRA_EXPOSICAO))
-    _ULTIMA_AMOSTRA_EXPOSICAO = agora
-    if dt <= 0:
-        return
-    for op in lista_operarios:
-        if op.celula_idx is None:
-            continue
-        acc = _ACUMULADO_EXPOSICAO.setdefault(op.celula_idx, [0.0, 0.0, 0])
-        acc[0] += dt
-        if classificar_infracao(op):
-            acc[1] += dt
-    if agora - _FLUSH_EXPOSICAO >= 1.0:
-        _flush_exposicao(agora)
-
-
-def _flush_exposicao(agora=None):
-    """Grava o acumulado de exposição por célula no banco (se houver dados)."""
-    global _ACUMULADO_EXPOSICAO, _FLUSH_EXPOSICAO
-    agora = agora if agora is not None else time.monotonic()
-    if not _ACUMULADO_EXPOSICAO:
-        _FLUSH_EXPOSICAO = agora
-        return
-    incrementos = dict(_ACUMULADO_EXPOSICAO)
-    _ACUMULADO_EXPOSICAO = {}
-    _FLUSH_EXPOSICAO = agora
-    try:
-        banco.registrar_exposicao_celulas(incrementos)
-    except Exception as exc:
-        _registrar_falha(f"falha ao registrar exposicao: {exc!r}")
-
-
-# ---------------------------------------------------------------------------
-# Pipeline principal
-# ---------------------------------------------------------------------------
-def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame=None):
-    """Monta os operários do frame, associa EPIs, avalia risco e persiste.
-
-    Cada etapa final (log e salvamento) é isolada: uma falha em
-    ``analisar_seguranca`` não impede ``filtrar_salvamento`` de gravar a
-    evidência, e vice-versa.
-    """
-    lista_operarios = []
-
-    pessoas_detectadas = _get_pessoa(specs_frame)
-    if not pessoas_detectadas:
-        # Quadros vazios mantêm o cliente do Gêmeo informado de que a fonte
-        # real continua conectada, em vez de parecer uma perda de sinal.
-        _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
-        return lista_operarios
-
-    for dados_pessoa in pessoas_detectadas:
-        novo_operario = Operario(
-            box_xyxy=_to_xyxy(dados_pessoa, ["bounding_box_xyxy"], 0.0),
-            conf_pessoa=_get_conf(dados_pessoa),
-        )
-        lista_operarios.append(novo_operario)
-
-    # Cada EPI vai para UM operário e cada operário recebe no máximo UM EPI
-    # de cada tipo (pareamento guloso por menor distância).
-    for dado_epi, operario in _atribuir_epi(specs_frame.get("helmet") or [], lista_operarios, ZONA_CAPACETE):
-        operario.tem_capacete = True
-        operario.conf_capacete = _get_conf(dado_epi)
-        operario.box_capacete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
-
-    for dado_epi, operario in _atribuir_epi(specs_frame.get("vest") or [], lista_operarios, ZONA_COLETE):
-        operario.tem_colete = True
-        operario.conf_colete = _get_conf(dado_epi)
-        operario.box_colete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
-
-    if area_risco_ativa:
-        for operario in lista_operarios:
-            if verificar_area_risco(box_area_risco, operario.box_xyxy):
-                operario.risco_detectado = True
-
-    # Projeção do ponto dos pés para a planta (Etapa 3) — sem calibração
-    # válida os campos ficam None e o banco grava NULL.
-    calibracao = _obter_calibracao()
-    if calibracao:
-        for operario in lista_operarios:
-            x_m, z_m, idx = projetar_pe_para_planta(operario.box_xyxy, calibracao)
-            operario.pos_x_m, operario.pos_z_m, operario.celula_idx = x_m, z_m, idx
-
-    _executar_seguro("analisar_seguranca", analisar_seguranca, lista_operarios)
-    trilhas_antes = _proximo_track_id
-    _executar_seguro("filtrar_salvamento", filtrar_salvamento, lista_operarios, frame)
-    # Amostra o buffer de trajetória a no máximo 2 Hz e persiste os pontos
-    # de trilhas já vinculadas a um evento (Etapa 4)
-    _executar_seguro("trajetoria", _amostrar_trajetoria, lista_operarios)
-    # Acumula presença/infração por célula para o mapa de calor (Etapa 5)
-    _executar_seguro("exposicao", _acumular_exposicao, lista_operarios)
-    # filtrar_salvamento atribui as trilhas; só então o payload contém o
-    # track_id efêmero junto de caixas, EPIs, confiança e risco consolidados.
-    _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
-    # filtrar_salvamento associa as trilhas; as novas contam como passagens.
-    _executar_seguro("amostragem", _amostrar, lista_operarios, bool(area_risco_ativa),
-                     max(0, _proximo_track_id - trilhas_antes))
-    return lista_operarios
-
-
-def _amostrar(lista_operarios, area_ativa, trilhas_novas):
-    """Conta quantas pessoas foram OBSERVADAS (denominador da taxa de conformidade).
-
-    Roda a cada frame com pessoas, inclusive os conformes. Os contadores ficam em
-    memória e só vão ao banco a cada ``INTERVALO_GRAVACAO`` s, com o pendrive montado."""
-    amostragem.registrar(lista_operarios, area_ativa, trilhas_novas)
-    if banco.pendrive_pronto():
-        amostragem.descarregar(banco.CAMINHO_BANCO)
-
-
-def _executar_seguro(nome, funcao, *args):
-    """Executa uma etapa do pipeline sem deixar a exceção subir ao callback."""
-    try:
-        return funcao(*args)
-    except Exception as exc:
-        _registrar_falha(f"{nome} falhou: {exc!r}")
-        return None
-
-
-def _registrar_falha(mensagem: str):
-    texto = f"[ERRO]: {mensagem}"
-    print(texto)
-    traceback.print_exc()
-    try:
-        servidor.enviar_log(texto)
-    except Exception:
-        pass  # o log para a interface nunca pode derrubar a deteccao
-
-
-def _atribuir_epi(epis, operarios, corpo):
-    """Pareia EPIs e operários de forma exclusiva (guloso por distância).
-
-    1. gera todos os pares válidos ``(distância, idx_epi, idx_operario)`` — o
-       centro do EPI precisa cair dentro da largura da pessoa e na faixa
-       vertical ``corpo``;
-    2. ordena por distância crescente;
-    3. percorre a lista consumindo cada EPI e cada operário no máximo uma vez.
-
-    Retorna uma lista de ``(dado_epi, operario)`` (``dado_epi`` é o dict
-    original da detecção, de onde saem caixa e confiança).
-    """
-    boxes_epi = []
-    for dado in epis:
-        if not isinstance(dado, dict):
-            boxes_epi.append(None)
-            continue
-        box = _to_xyxy(dado, ["bounding_box_xyxy"], 0.0)
-        boxes_epi.append(None if box == [0.0, 0.0, 0.0, 0.0] else box)
-
-    boxes_op = []
-    for operario in operarios:
-        box = list(operario.box_xyxy)
-        boxes_op.append(None if box == [0.0, 0.0, 0.0, 0.0] else box)
-
-    pares = []
-    for idx_epi, box_epi in enumerate(boxes_epi):
-        if box_epi is None:
-            continue
-        centro_epi = calcular_centro(box_epi)
-        for idx_op, box_op in enumerate(boxes_op):
-            if box_op is None:
-                continue
-            if verificar_epi(box_epi, box_op, corpo):
-                distancia = math.dist(centro_epi, calcular_centro(box_op))
-                pares.append((distancia, idx_epi, idx_op))
-
-    pares.sort()
-
-    epis_usados = set()
-    operarios_usados = set()
-    atribuicoes = []
-    for _distancia, idx_epi, idx_op in pares:
-        if idx_epi in epis_usados or idx_op in operarios_usados:
-            continue
-        epis_usados.add(idx_epi)
-        operarios_usados.add(idx_op)
-        atribuicoes.append((epis[idx_epi], operarios[idx_op]))
-
-    return atribuicoes
-
-
-ultimo_alerta = 0.0
-TEMPO_ESPERA = config.TEMPO_ESPERA
-
-
-def analisar_seguranca(lista_de_operarios):
-
-    global ultimo_alerta
-    tempo_atual = time.time()
-
-    if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
-        for operario in lista_de_operarios:
-            if (
-                operario.tem_colete is True
-                and operario.tem_capacete is True
-                and operario.risco_detectado is False
-            ):
-                mensagem = "[OK]: Operario com todos os EPIs e seguro!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-
-            if operario.tem_colete is False:
-                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-
-            if operario.tem_capacete is False:
-                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-
-            if operario.risco_detectado is True:
-                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!"
-                print(mensagem)
-                servidor.enviar_log(mensagem)
-
-        ultimo_alerta = tempo_atual
-
-
-# ---------------------------------------------------------------------------
-# Rastreamento temporario por trilha (sem identificacao civil permanente)
-# ---------------------------------------------------------------------------
+# ===== 4. RASTREAMENTO E ATRIBUIÇÃO GLOBAL DE TRILHAS =====
 # Cada pessoa recebe um ``track_id`` efemero, associado entre frames consecutivos
 # por IoU das caixas e por distancia entre centros proporcional ao tamanho da
 # propria caixa. Nao ha reconhecimento facial nem identidade estavel no tempo:
@@ -523,6 +300,7 @@ TEMPO_ESPERA_SALVAR = config.TEMPO_ESPERA_SALVAR  # cooldown POR trilha e POR ti
 # um obstaculo e volta antes do cooldown acabar, mantem o mesmo track_id e nao
 # gera ocorrencia duplicada.
 TEMPO_VIDA_TRILHA = float(config.TEMPO_VIDA_TRILHA)
+# Cooldown do log de segurança (seção 6) e contador de trilhas.
 
 _proximo_track_id = 1
 _trilhas_ativas = {}       # track_id -> {"box": tuple, "visto_em": float}
@@ -552,11 +330,13 @@ def calcular_iou(box_a, box_b):
 
 
 def calcular_centro(box):
+    """Centro geométrico da caixa."""
     x1, y1, x2, y2 = box
     return ((x1 + x2) / 2, (y1 + y2) / 2)
 
 
 def calcular_diagonal(box):
+    """Diagonal da caixa — a referência de escala entre frames."""
     x1, y1, x2, y2 = box
     return math.dist((x1, y1), (x2, y2))
 
@@ -650,6 +430,206 @@ def associar_trilhas(lista_de_operarios, agora):
     return lista_de_operarios
 
 
+# ===== 5. BUFFER CIRCULAR DE TRAJETÓRIA (2 Hz, ±15 s) E EXPOSIÇÃO POR CÉLULA =====
+# A repetição de detecções do mesmo alvo é aplainada por um buffer circular de
+# 30 pontos (máx. 2 Hz), janela de +15 s após cada ocorrência para o replay
+# caixa-preta do gêmeo, e acumuladores por célula para o mapa de calor.
+_TRAJETORIA_BUFFER = {}        # track_id -> deque(maxlen=30) de pontos
+_ULTIMA_AMOSTRA_TRAJETORIA = {}  # track_id -> monotonic
+_TRILHA_EM_EVENTO = {}         # track_id -> {"ocorrencia_id": int, "t_inicio": ms}
+_ULTIMA_AMOSTRA_EXPOSICAO = None
+_FLUSH_EXPOSICAO = 0.0
+_ACUMULADO_EXPOSICAO = {}      # celula_idx -> [presenca_s, infracao_s, eventos]
+
+
+def _ponto_trajetoria(op):
+    """Ponto serializável do replay (tempo, posição em metros e flags de EPI)."""
+    return {
+        "t_ms": int(time.monotonic() * 1000),
+        "x_m": op.pos_x_m,
+        "z_m": op.pos_z_m,
+        "helmet": 1 if op.tem_capacete else 0,
+        "vest": 1 if op.tem_colete else 0,
+        "in_risk": 1 if op.risco_detectado else 0,
+    }
+
+
+def _amostrar_trajetoria(lista_operarios):
+    """Amostra pontos de trajetória a no máximo 2 Hz (0.5 s), buffer de 30."""
+    if not lista_operarios:
+        return
+    agora = time.monotonic()
+    for op in lista_operarios:
+        if getattr(op, "track_id", None) is None or op.pos_x_m is None or op.pos_z_m is None:
+            continue
+        ultima = _ULTIMA_AMOSTRA_TRAJETORIA.get(op.track_id, 0.0)
+        if agora - ultima < 0.5:
+            continue
+        _ULTIMA_AMOSTRA_TRAJETORIA[op.track_id] = agora
+        ponto = _ponto_trajetoria(op)
+        buffer = _TRAJETORIA_BUFFER.setdefault(op.track_id, [])
+        buffer.append(ponto)
+        if len(buffer) > 30:
+            buffer.pop(0)
+        # Enquanto a trajetória está vinculada a um evento, os pontos novos
+        # já vão direto ao banco (janela de +15 s após a ocorrência).
+        evento = _TRILHA_EM_EVENTO.get(op.track_id)
+        if evento and (ponto["t_ms"] - evento["t_inicio"]) <= 15000:
+            try:
+                banco.salvar_pontos_trajetoria(evento["ocorrencia_id"], [ponto])
+            except Exception as exc:
+                _registrar_falha(f"falha ao salvar ponto de trajetoria: {exc!r}")
+        elif evento:
+            _TRILHA_EM_EVENTO.pop(op.track_id, None)
+
+
+def _vincular_trilha(track_id, ocorrencia_id):
+    """Persiste o buffer recém-amostrado e marca a trilha como em evento."""
+    pontos = list(_TRAJETORIA_BUFFER.get(track_id, []))
+    if pontos:
+        try:
+            banco.salvar_pontos_trajetoria(ocorrencia_id, pontos)
+        except Exception as exc:
+            _registrar_falha(f"falha ao salvar buffer de trajetoria: {exc!r}")
+    # Os pontos do buffer já estão gravados; limpá-lo evita gravar os mesmos
+    # pontos de novo caso a mesma trilha gere outra ocorrência depois do cooldown.
+    _TRAJETORIA_BUFFER[track_id] = []
+    _TRILHA_EM_EVENTO[track_id] = {"ocorrencia_id": ocorrencia_id, "t_inicio": int(time.monotonic() * 1000)}
+
+
+def _acumular_exposicao(lista_operarios):
+    """Acumula presença/infração por célula e descarrega a cada ~1 s."""
+    global _ULTIMA_AMOSTRA_EXPOSICAO, _FLUSH_EXPOSICAO
+    agora = time.monotonic()
+    if _ULTIMA_AMOSTRA_EXPOSICAO is None:
+        _ULTIMA_AMOSTRA_EXPOSICAO = agora
+        return
+    dt = min(2.0, max(0.0, agora - _ULTIMA_AMOSTRA_EXPOSICAO))
+    _ULTIMA_AMOSTRA_EXPOSICAO = agora
+    if dt <= 0:
+        return
+    for op in lista_operarios:
+        if op.celula_idx is None:
+            continue
+        acc = _ACUMULADO_EXPOSICAO.setdefault(op.celula_idx, [0.0, 0.0, 0])
+        acc[0] += dt
+        if classificar_infracao(op):
+            acc[1] += dt
+    if agora - _FLUSH_EXPOSICAO >= 1.0:
+        _flush_exposicao(agora)
+
+
+def _flush_exposicao(agora=None):
+    """Grava o acumulado de exposição por célula no banco (se houver dados)."""
+    global _ACUMULADO_EXPOSICAO, _FLUSH_EXPOSICAO
+    agora = agora if agora is not None else time.monotonic()
+    if not _ACUMULADO_EXPOSICAO:
+        _FLUSH_EXPOSICAO = agora
+        return
+    incrementos = dict(_ACUMULADO_EXPOSICAO)
+    _ACUMULADO_EXPOSICAO = {}
+    _FLUSH_EXPOSICAO = agora
+    try:
+        banco.registrar_exposicao_celulas(incrementos)
+    except Exception as exc:
+        _registrar_falha(f"falha ao registrar exposicao: {exc!r}")
+
+
+# ===== 6. PIPELINE PRINCIPAL (organizar_dado e filtrar_salvamento) =====
+# Cadeia por frame: pessoas -> operários -> EPIs (pareamento guloso exclusivo)
+# -> área de risco -> projeção -> log de segurança -> salvamento (com trilhas)
+# -> trajetória -> exposição -> telemetria do gêmeo -> amostragem estatística.
+ultimo_alerta = 0.0
+TEMPO_ESPERA = config.TEMPO_ESPERA
+
+
+def analisar_seguranca(lista_de_operarios):
+    """Log de segurança com cooldown GLOBAL de TEMPO_ESPERA s: imprime/envia ao
+    painel o estado de cada operário (OK/sem colete/sem capacete/área de risco)."""
+    global ultimo_alerta
+    tempo_atual = time.time()
+
+    if (tempo_atual - ultimo_alerta) >= TEMPO_ESPERA:
+        for operario in lista_de_operarios:
+            if (
+                operario.tem_colete is True
+                and operario.tem_capacete is True
+                and operario.risco_detectado is False
+            ):
+                mensagem = "[OK]: Operario com todos os EPIs e seguro!"
+                print(mensagem)
+                servidor.enviar_log(mensagem)
+
+            if operario.tem_colete is False:
+                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem colete!"
+                print(mensagem)
+                servidor.enviar_log(mensagem)
+
+            if operario.tem_capacete is False:
+                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} identificado sem capacete!"
+                print(mensagem)
+                servidor.enviar_log(mensagem)
+
+            if operario.risco_detectado is True:
+                mensagem = f"[ALERTA]: Operario na posição {operario.box_xyxy} está em área de risco!"
+                print(mensagem)
+                servidor.enviar_log(mensagem)
+
+        ultimo_alerta = tempo_atual
+
+
+def _atribuir_epi(epis, operarios, corpo):
+    """Pareia EPIs e operários de forma exclusiva (guloso por distância).
+
+    1. gera todos os pares válidos ``(distância, idx_epi, idx_operario)`` — o
+       centro do EPI precisa cair dentro da largura da pessoa e na faixa
+       vertical ``corpo``;
+    2. ordena por distância crescente;
+    3. percorre a lista consumindo cada EPI e cada operário no máximo uma vez.
+
+    Retorna uma lista de ``(dado_epi, operario)`` (``dado_epi`` é o dict
+    original da detecção, de onde saem caixa e confiança).
+    """
+    boxes_epi = []
+    for dado in epis:
+        if not isinstance(dado, dict):
+            boxes_epi.append(None)
+            continue
+        box = _to_xyxy(dado, ["bounding_box_xyxy"], 0.0)
+        boxes_epi.append(None if box == [0.0, 0.0, 0.0, 0.0] else box)
+
+    boxes_op = []
+    for operario in operarios:
+        box = list(operario.box_xyxy)
+        boxes_op.append(None if box == [0.0, 0.0, 0.0, 0.0] else box)
+
+    pares = []
+    for idx_epi, box_epi in enumerate(boxes_epi):
+        if box_epi is None:
+            continue
+        centro_epi = calcular_centro(box_epi)
+        for idx_op, box_op in enumerate(boxes_op):
+            if box_op is None:
+                continue
+            if verificar_epi(box_epi, box_op, corpo):
+                distancia = math.dist(centro_epi, calcular_centro(box_op))
+                pares.append((distancia, idx_epi, idx_op))
+
+    pares.sort()
+
+    epis_usados = set()
+    operarios_usados = set()
+    atribuicoes = []
+    for _distancia, idx_epi, idx_op in pares:
+        if idx_epi in epis_usados or idx_op in operarios_usados:
+            continue
+        epis_usados.add(idx_epi)
+        operarios_usados.add(idx_op)
+        atribuicoes.append((epis[idx_epi], operarios[idx_op]))
+
+    return atribuicoes
+
+
 def classificar_infracao(operario):
     """Tipo de infracao do operario, ou None quando estiver conforme.
 
@@ -668,7 +648,7 @@ def classificar_infracao(operario):
 
 
 def montar_cena(lista_de_operarios):
-    """Lista serializavel de TODOS os trabalhadores vistos na cena."""
+    """Lista serializável de TODOS os trabalhadores vistos na cena."""
     cena = []
     for outro in lista_de_operarios:
         if getattr(outro, "track_id", None) is None:
@@ -685,6 +665,102 @@ def montar_cena(lista_de_operarios):
             "colete": list(outro.box_colete) if outro.box_colete else None,
         })
     return cena
+
+
+def organizar_dado(specs_frame: dict, box_area_risco: tuple, area_risco_ativa: bool, frame=None):
+    """Monta os operários do frame, associa EPIs, avalia risco e persiste.
+
+    Cada etapa final (log e salvamento) é isolada: uma falha em
+    ``analisar_seguranca`` não impede ``filtrar_salvamento`` de gravar a
+    evidência, e vice-versa.
+    """
+    lista_operarios = []
+
+    pessoas_detectadas = _get_pessoa(specs_frame)
+    if not pessoas_detectadas:
+        # Quadros vazios mantêm o cliente do Gêmeo informado de que a fonte
+        # real continua conectada, em vez de parecer uma perda de sinal.
+        _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
+        return lista_operarios
+
+    for dados_pessoa in pessoas_detectadas:
+        novo_operario = Operario(
+            box_xyxy=_to_xyxy(dados_pessoa, ["bounding_box_xyxy"], 0.0),
+            conf_pessoa=_get_conf(dados_pessoa),
+        )
+        lista_operarios.append(novo_operario)
+
+    # Cada EPI vai para UM operário e cada operário recebe no máximo UM EPI
+    # de cada tipo (pareamento guloso por menor distância).
+    for dado_epi, operario in _atribuir_epi(specs_frame.get("helmet") or [], lista_operarios, ZONA_CAPACETE):
+        operario.tem_capacete = True
+        operario.conf_capacete = _get_conf(dado_epi)
+        operario.box_capacete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
+
+    for dado_epi, operario in _atribuir_epi(specs_frame.get("vest") or [], lista_operarios, ZONA_COLETE):
+        operario.tem_colete = True
+        operario.conf_colete = _get_conf(dado_epi)
+        operario.box_colete = _to_xyxy(dado_epi, ["bounding_box_xyxy"], 0.0)
+
+    if area_risco_ativa:
+        for operario in lista_operarios:
+            if verificar_area_risco(box_area_risco, operario.box_xyxy):
+                operario.risco_detectado = True
+
+    # Projeção do ponto dos pés para a planta (Etapa 3) — sem calibração
+    # válida os campos ficam None e o banco grava NULL.
+    calibracao = _obter_calibracao()
+    if calibracao:
+        for operario in lista_operarios:
+            x_m, z_m, idx = projetar_pe_para_planta(operario.box_xyxy, calibracao)
+            operario.pos_x_m, operario.pos_z_m, operario.celula_idx = x_m, z_m, idx
+
+    _executar_seguro("analisar_seguranca", analisar_seguranca, lista_operarios)
+    trilhas_antes = _proximo_track_id
+    _executar_seguro("filtrar_salvamento", filtrar_salvamento, lista_operarios, frame)
+    # Amostra o buffer de trajetória a no máximo 2 Hz e persiste os pontos
+    # de trilhas já vinculadas a um evento (Etapa 4)
+    _executar_seguro("trajetoria", _amostrar_trajetoria, lista_operarios)
+    # Acumula presença/infração por célula para o mapa de calor (Etapa 5)
+    _executar_seguro("exposicao", _acumular_exposicao, lista_operarios)
+    # filtrar_salvamento atribui as trilhas; só então o payload contém o
+    # track_id efêmero junto de caixas, EPIs, confiança e risco consolidados.
+    _executar_seguro("telemetria_gemeo", servidor.enviar_telemetria, lista_operarios)
+    # filtrar_salvamento associa as trilhas; as novas contam como passagens.
+    _executar_seguro("amostragem", _amostrar, lista_operarios, bool(area_risco_ativa),
+                     max(0, _proximo_track_id - trilhas_antes))
+    return lista_operarios
+
+
+def _amostrar(lista_operarios, area_ativa, trilhas_novas):
+    """Conta quantas pessoas foram OBSERVADAS (denominador da taxa de conformidade).
+
+    Roda a cada frame com pessoas, inclusive os conformes. Os contadores ficam em
+    memória e só vão ao banco a cada ``INTERVALO_GRAVACAO`` s, com o pendrive montado."""
+    amostragem.registrar(lista_operarios, area_ativa, trilhas_novas)
+    if banco.pendrive_pronto():
+        amostragem.descarregar(banco.CAMINHO_BANCO)
+
+
+def _executar_seguro(nome, funcao, *args):
+    """Executa uma etapa do pipeline sem deixar a exceção subir ao callback."""
+    try:
+        return funcao(*args)
+    except Exception as exc:
+        _registrar_falha(f"{nome} falhou: {exc!r}")
+        return None
+
+
+def _registrar_falha(mensagem: str):
+    """Ponto único de registro de falha: print no console + log à interface +
+    callback nunca propaga a exceção para a câmera."""
+    texto = f"[ERRO]: {mensagem}"
+    print(texto)
+    traceback.print_exc()
+    try:
+        servidor.enviar_log(texto)
+    except Exception:
+        pass  # o log para a interface nunca pode derrubar a deteccao
 
 
 def filtrar_salvamento(lista_de_operarios, frame=None):
@@ -759,35 +835,8 @@ def filtrar_salvamento(lista_de_operarios, frame=None):
 
     return salvos
 
-# ---------------------------------------------------------------------------
-# Geometria
-# ---------------------------------------------------------------------------
-def verificar_area_risco(box_risco, box_pessoa) -> bool:
-    if not box_risco or not box_pessoa:
-        return False
 
-    px1, py1, px2, py2 = box_pessoa
-    rx1, ry1, rx2, ry2 = box_risco
-    # Ponto de contato com o piso: centro horizontal da caixa, base vertical (y2)
-    px_base = (px1 + px2) / 2
-    py_base = py2
-    return rx1 <= px_base <= rx2 and ry1 <= py_base <= ry2
-
-
-def verificar_epi(box_epi, box_operario, local_corpo) -> bool:
-    ox1, oy1, ox2, oy2 = box_operario
-    ex1, ey1, ex2, ey2 = box_epi
-    altura = abs(oy1 - oy2)
-    centro_x_epi = (ex1 + ex2) / 2
-    centro_y_epi = (ey1 + ey2) / 2
-    zona_topo = oy1 + local_corpo[0] * altura
-    zona_base = oy1 + local_corpo[1] * altura
-    return ox1 <= centro_x_epi <= ox2 and zona_topo <= centro_y_epi <= zona_base
-
-
-# ---------------------------------------------------------------------------
-# Callback da camera
-# ---------------------------------------------------------------------------
+# ===== CALLBACK DA CÂMERA (ponto de entrada) =====
 def operario_detectado(specs_frame, frame=None):
     """Callback compativel com a lib nova (dict + frame) e a antiga (so dict).
 

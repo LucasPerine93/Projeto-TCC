@@ -1,4 +1,15 @@
-/* Estado compartilhado, navegação entre as telas e avisos (toasts). */
+/* =========================================================================
+   nucleo.js — Roteamento de abas, estado global e ciclo de vida das telas
+   -------------------------------------------------------------------------
+   Controla:
+   - ``estado`` compartilhado (tela atual, autenticado) e o mapa
+     registrarTela(nome, { entrar }) de cada tela;
+   - navegação por abas/hash (#/painel etc.) com histórico do navegador
+     (popstate) e foco no conteúdo;
+   - mostrar/ocultar o bloco de acesso vs. o app;
+   - chips de status (cheio = ok/alerta/erro) e o aviso (toast) temporário.
+   ========================================================================= */
+/* ===== 1. ESTADO GLOBAL E CATÁLOGO DE TELAS ===== */
 import { el, icone } from "./util.js";
 
 export const estado = { tela: null, autenticado: false };
@@ -14,6 +25,7 @@ export function telaDoHash() {
   return location.hash.replace(/^#\//, "");
 }
 
+/* ===== 2. NAVEGAÇÃO E CICLO DE VIDA DAS TELAS ===== */
 export function irPara(nome, { historico = true, foco = true } = {}) {
   if (!telas.has(nome)) nome = "ao-vivo";
   estado.tela = nome;
@@ -33,6 +45,7 @@ export function irPara(nome, { historico = true, foco = true } = {}) {
   if (foco) document.getElementById("conteudo")?.focus({ preventScroll: true });
 }
 
+/* ===== 3. BLOQUEIO DE ACESSO E CHIPS DE STATUS ===== */
 window.addEventListener("popstate", () => {
   if (estado.autenticado) irPara(telaDoHash(), { historico: false });
 });
@@ -51,6 +64,7 @@ export function definirChip(id, situacao, texto) {
   chip.title = texto;               // na faixa de ícones o texto some; o tooltip e o leitor de tela mantêm a informação
 }
 
+/* ===== 4. AVISO (TOAST) TEMPORÁRIO ===== */
 /** Aviso temporário. `acao` = { rotulo, aoClicar } (por exemplo "Desfazer"). */
 export function avisar(texto, { tipo = "info", acao = null, duracao = 6000 } = {}) {
   const area = document.getElementById("avisos");

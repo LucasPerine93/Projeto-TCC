@@ -1,3 +1,28 @@
+"""seguranca.py — Login, sessões por cookie e proteção CSRF do painel.
+
+Papel do arquivo
+----------------
+Toda a autenticação HTTP do painel: hash de senha PBKDF2 (SHA-256), sessões em
+memória no servidor via cookie HttpOnly ``SameSite=strict``, janela de tickets
+de uso único para o frontend, rate-limit com bloqueio progressivo por IP e uma
+verificação de origem (``x-requested-with: painel``) nas requisições de escrita.
+
+Entradas / Saídas
+-----------------
+- Entrada: rotas HTTP usadas pelo WebUI (``/login``, ``/sessao``, ``/logout`` e a
+  verificação ``exigir()`` em toda rota sensível, inclusive ``/assistente``).
+- Saída: ``JSONResponse`` com sessão ativa/ticket, ou 401/403/429 com mensagem.
+
+Índice de seções
+----------------
+1. Hash PBKDF2 e verificação de senha (``TCC_SENHA_HASH`` no ambiente)
+2. Sessões em memória, janela de tickets e limpeza de expirados
+3. Proteção CSRF/origem (``exigir``) e rotas HTTP de login/sessao/logout
+
+Variável de ambiente obrigatória: ``TCC_SENHA_HASH`` (gere com
+``python seguranca.py <nova-senha>``). Nenhuma senha chega ao frontend e o
+logout invalida a sessão no servidor (o cookie some no cliente).
+"""
 import hashlib
 import hmac
 import os
@@ -9,6 +34,7 @@ from fastapi.responses import JSONResponse
 
 import config
 
+# ===== 1. HASH PBKDF2 E VERIFICAÇÃO DE SENHA (TCC_SENHA_HASH no ambiente) =====
 COOKIE = config.COOKIE_SESSAO
 DURACAO_SESSAO = config.DURACAO_SESSAO
 DURACAO_TICKET = config.DURACAO_TICKET
@@ -16,6 +42,7 @@ MAX_FALHAS = config.MAX_FALHAS
 BLOQUEIO_BASE = config.BLOQUEIO_BASE
 ITERACOES = config.ITERACOES_PBKDF2
 
+# ===== 2. SESSÕES EM MEMÓRIA, TICKETS DE USO ÚNICO E LIMPEZA DE EXPIRADOS =====
 _sessoes = {}
 _tickets = {}
 _falhas = {}
@@ -45,6 +72,7 @@ def _limpar(agora):
 def _negar(status, msg):
     return JSONResponse({"sucesso": False, "mensagem": msg}, status_code=status)
 
+# ===== 3. PROTEÇÃO CSRF/ORIGEM (exigir) E ROTAS HTTP DE LOGIN/SESSAO/LOGOUT =====
 def exigir(request, escrita: bool = False):
     agora = time.time()
     token = request.cookies.get(COOKIE)

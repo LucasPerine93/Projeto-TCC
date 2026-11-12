@@ -1,5 +1,12 @@
-/* Utilitários de DOM, texto e datas (sem dependências). */
+/* =========================================================================
+   util.js — Utilitários de DOM, texto, datas e preferências (sem dependências)
+   -------------------------------------------------------------------------
+   Controla: criação segura de elementos (sem innerHTML), ícones do sprite,
+   normalização/classificação de infrações, pílulas/selos de status, formatação
+   de datas/percentuais e leitura/gravação tolerante de localStorage.
 
+   ===== 1. DOM SEGURO (el, ícone) =====
+   ========================================================================= */
 /** Cria um elemento sem usar innerHTML (textos sempre entram como texto). */
 export function el(tag, atributos = {}, ...filhos) {
   const no = document.createElement(tag);
@@ -29,6 +36,7 @@ export function icone(nome) {
   return svg;
 }
 
+/* ===== 2. NORMALIZAÇÃO E CLASSIFICAÇÃO DE INFRAÇÕES ===== */
 export const normalizar = (texto) =>
   String(texto ?? "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
@@ -55,6 +63,7 @@ export function infoTipo(tipo) {
 export const ordemGravidade = (g) => ORDEM_GRAVIDADE[g] ?? 9;
 export const iconeGravidade = (g) => ICONE_GRAVIDADE[g] ?? "aviso";
 
+/* ===== 3. SELOS (PÍLULAS) E ORDEM/GRAVIDADE ===== */
 /** Selo "ícone + texto" (a cor nunca é o único sinal). */
 export function pilulaTipo(tipo, { comGravidade = true } = {}) {
   const info = infoTipo(tipo);
@@ -76,6 +85,7 @@ export function pilulaStatus(status) {
   return el("span", { class: `pilula ${classe}` }, icone(nome), texto);
 }
 
+/* ===== 4. DATAS, PERCENTUAIS E REGIÃO DO QUADRO ===== */
 const doisDigitos = (n) => String(n).padStart(2, "0");
 export const hora = (d) => `${doisDigitos(d.getHours())}:${doisDigitos(d.getMinutes())}`;
 
@@ -119,6 +129,7 @@ export function plural(n, singular, pluralTexto) {
   return `${n} ${n === 1 ? singular : pluralTexto ?? singular + "s"}`;
 }
 
+/* ===== 5. PREFERÊNCIAS DO NAVEGADOR (localStorage tolerante) ===== */
 /** localStorage/sessionStorage podem lançar exceção (modo privado): sempre com try/catch. */
 export function lerPreferencia(chave, padrao = null) {
   try { return localStorage.getItem(chave) ?? padrao; } catch { return padrao; }

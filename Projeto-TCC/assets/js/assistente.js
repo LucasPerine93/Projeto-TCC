@@ -1,9 +1,20 @@
-/* Painel do assistente de IA: consulta SOMENTE LEITURA sobre o SQLite do painel.
-   Fluxo: POST /assistente { pergunta } -> { resposta, fatos, acao | null }.
-   Se a resposta traz acao.tipo === "focar_gemeo", oferece o botão
-   "Ver região no Gêmeo 3D" que abre a aba Gêmeo 3D com o mapa de calor ligado.
-   O assistente nunca envia dados de escrita: apenas a pergunta (texto) e,
-   quando houver LLM externo, os fatos agregados definidos no backend. */
+/* =========================================================================
+   assistente.js — Painel do assistente de IA (consulta somente-leitura)
+   -------------------------------------------------------------------------
+   Controla:
+   - abrir/fechar o painel lateral do assistente (#painel-ia) e o estado
+     acessível do botão (#botao-ia: aria-expanded/foco);
+   - enviar perguntas via POST /assistente e renderizar a resposta;
+   - ação "Ver região no Gêmeo 3D" (quando a resposta traz
+     acao.tipo === "focar_gemeo"): abre a aba do gêmeo e espera o motor
+     carregar para focar a região de calor.
+
+   O assistente nunca escreve dados: apenas a pergunta (texto) sai do
+   navegador; o backend (assistente.py) responde olhando o SQLite.
+   Enquanto o LLM externo não estiver configurado, as respostas vêm 100%
+   do motor local determinístico do backend.
+   ========================================================================= */
+/* ===== 1. ELEMENTOS E ABERTURA/FECHAMENTO DO PAINEL ===== */
 import { lerPreferencia, gravarPreferencia } from "./util.js";
 import { apiJson } from "./api.js";
 import { irPara } from "./nucleo.js";
@@ -34,7 +45,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && !painel.hidden && painel.contains(document.activeElement)) abrir(false);
 });
 
-/* ---------------- Perguntas e respostas ---------------- */
+/* ===== 2. PERGUNTAS E RESPOSTAS (POST /assistente, ação "focar_gemeo") ===== */
 function novaPergunta(texto) {
   historico.hidden = false;
   const li = document.createElement("article");
@@ -104,6 +115,7 @@ async function perguntar(texto) {
 
 let enviando = false;
 
+/* ===== 3. ENVIO DO FORMULÁRIO E EXEMPLOS CLICÁVEIS ===== */
 form.addEventListener("submit", (evento) => {
   evento.preventDefault();
   const texto = entrada.value.trim();

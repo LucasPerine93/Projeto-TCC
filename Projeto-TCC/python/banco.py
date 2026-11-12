@@ -1,3 +1,32 @@
+"""banco.py — Persistência SQLite (ocorrências, trajetórias, mapa de calor) e painel.
+
+Papel do arquivo
+----------------
+Única porta de entrada para o banco SQLite do projeto: garante o schema
+(migração idempotente de bancos antigos para o esquema atual), grava as
+ocorrências com a evidência fotográfica, mantém o replay 3D dos eventos
+(janela de ±15 s), o mapa de calor normalizado por exposição e as consultas
+agregadas que alimentam o painel.
+
+Entradas / Saídas
+-----------------
+- Entrada: chamadas do ``detector.py`` (salvar ocorrências, trajetórias,
+  exposição), do ``servidor.py`` (rotas REST) e do ``amostragem.py``.
+- Saída: dados serializáveis (listas/dicts de tipos nativos) prontos para
+  ``json.dump`` ou ``jsonResponse``.
+
+Índice de seções
+----------------
+1. Conexão SQLite e migração automática de schema (``_garantir_tabelas``)
+2. Ocorrências e revisão manual (coordenadas espaciais ``x_m, z_m, celula_idx``)
+3. Trajetórias de Replay 3D (``trajetoria``, retenção de 90 dias)
+4. Mapa de calor normalizado por exposição (``exposicao_celula``)
+5. Consultas agregadas do Dashboard (``calcular_dados_dashboard``)
+
+Nenhuma função aqui apaga evidência: ``excluir_ocorrencia`` remove foto só
+quando a última ocorrência daquela foto deixa de existir; ``revisar_ocorrencia``
+apenas marca a decisão do técnico (nada é deletado por engano).
+"""
 from fastapi.responses import FileResponse
 from collections import Counter
 from datetime import datetime, timedelta
@@ -10,10 +39,11 @@ import sqlite3
 import time
 import os
 
-"""O docker coloca todos os apps na pasta "/app" 
-    quando montar a unidade de disco, ela deve ser 
+"""O docker coloca todos os apps na pasta "/app"
+    quando montar a unidade de disco, ela deve ser
     montada na pasta do projeto mas acessada por "/app" """
 
+# ===== 1. CONEXÃO SQLITE E MIGRAÇÃO AUTOMÁTICA DE SCHEMA (_garantir_tabelas) =====
 CAMINHO_PENDRIVE = config.CAMINHO_PENDRIVE
 
 CAMINHO_BANCO = config.CAMINHO_BANCO
@@ -26,6 +56,7 @@ def pendrive_pronto() -> bool:
 
 
 def verificar_pendrive(caminho_pendrive: str) -> bool:
+    """Verifica (e loga) a montagem do pendrive antes de qualquer gravação."""
     if os.path.ismount(caminho_pendrive):
         mensagem = "[SUCESSO]: Pendrive montado e pronto"
         print(mensagem)
@@ -113,11 +144,13 @@ def _abrir_banco():
 
 
 def inicializar_banco(caminho_banco: str) -> bool:
-    """ Cria a conexão como None antes do try para não 
-        dar erro fatal no finally 
-        se a conexão não for estabelecida """
-    
-    conexao = None 
+    """Cria (se necessário) a tabela ``ocorrencias`` e garante a migração.
+
+    Cria a conexão como None antes do try para não
+        dar erro fatal no finally
+        se a conexão não for estabelecida.
+    """
+    conexao = None
     try:
         conexao = sqlite3.connect(caminho_banco)
         cursor = conexao.cursor()
@@ -145,16 +178,17 @@ def inicializar_banco(caminho_banco: str) -> bool:
         print(mensagem)
         servidor.enviar_log(mensagem)
         return True
-    
+
     except sqlite3.Error as e:
         mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
         print(mensagem)
         servidor.enviar_log(mensagem)
         return False
-    
+
     finally:
         if conexao:
             conexao.close()
+
 
 def _to_float(val, default=0.0):
     """Converte ``val`` em ``float`` nativo ou devolve ``default``.
@@ -217,6 +251,7 @@ def _to_lista(valor, inteiro: bool = False):
     return int(numero) if inteiro else numero
 
 
+# ===== 2. OCORRÊNCIAS E REVISÃO MANUAL (coordenadas espaciais x_m, z_m, celula_idx) =====
 def _montar_caixas(posicao_operario, box_capacete, box_colete, cena=None, cena_id=None):
     """Caixas do trabalhador + lista completa da cena, num unico JSON.
 
@@ -331,10 +366,11 @@ def salvar_cena(frame, registros, cena=None):
 
 
 def pegar_foto(nome_foto: str):
+    """Serve a foto de evidência pelo nome do arquivo (GET /foto/{nome_foto})."""
     caminho_foto = os.path.join(PASTA_FOTOS, os.path.basename(nome_foto))
     if os.path.exists(caminho_foto):
         return FileResponse(caminho_foto, media_type="image/jpeg") # Envia a foto
-        
+
     return "Foto não encontrada"
 
 
@@ -427,11 +463,15 @@ def excluir_ocorrencia(ocorrencia_id):
     servidor.enviar_log(f"[BANCO]: {mensagem}")
     return {"sucesso": True, "mensagem": mensagem, "foto_excluida": foto_excluida}
 
+
 def dados_ocorrencias():
+    """Lista todas as ocorrências (mais recentes primeiro) para a tela de ocorrências.
+
+    Sem banco ainda (pendrive ausente / nenhuma infração): lista vazia e SEM log,
+    porque a interface consulta isto de tempos em tempos.
+    """
     registros = []
     conexao = None
-    # Sem banco ainda (pendrive ausente / nenhuma infração): lista vazia e SEM log,
-    # porque a interface consulta isto de tempos em tempos.
     if not os.path.isfile(CAMINHO_BANCO):
         return registros
     try:
@@ -462,31 +502,32 @@ def dados_ocorrencias():
                      "revisado_em " \
                      "FROM ocorrencias " \
                      "ORDER BY id DESC"
-        
+
         cursor.execute(requisicao)
 
-        # Pega as linhas e converte para dicionarios 
+        # Pega as linhas e converte para dicionarios
         linhas = cursor.fetchall()
         registros = []
         for linha in linhas:
             registros.append(dict(linha))
-        
+
         for foto in registros:
-            """ Ao invés do caminho bruto da foto, pega só o nome do 
+            """ Ao invés do caminho bruto da foto, pega só o nome do
                 arquivo para a interface web conseguir fazer o GET na
                 função pegar foto """
-            
-            foto["caminho_foto"] = os.path.basename(foto["caminho_foto"]) 
+
+            foto["caminho_foto"] = os.path.basename(foto["caminho_foto"])
 
     except sqlite3.Error as e:
         mensagem = f"[ERRO]: Falha no banco de dados | detalhes do erro: {e}"
         print(mensagem)
         servidor.enviar_log(mensagem)
-    
+
     finally:
         if conexao:
             conexao.close()
     return registros
+
 
 def revisar_ocorrencia(ocorrencia_id, status, motivo=""):
     """Registra a revisão do técnico. Nada é apagado: o descarte vira ``descartada``
@@ -523,6 +564,152 @@ def revisar_ocorrencia(ocorrencia_id, status, motivo=""):
             "motivo": motivo or None, "revisado_em": revisado_em}
 
 
+# ===== 3. TRAJETÓRIAS DE REPLAY 3D (trajetoria, retenção de 90 dias) =====
+def obter_trajetoria(ocorrencia_id: int) -> list:
+    """Retorna a lista de pontos de trajetória de uma ocorrência (ordenados por tempo)."""
+    pontos = []
+    if not os.path.isfile(CAMINHO_BANCO):
+        return pontos
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for linha in cursor.execute(
+            "SELECT t_ms, x_m, z_m, helmet, vest, in_risk FROM trajetoria WHERE ocorrencia_id = ? ORDER BY t_ms, id",
+            (int(ocorrencia_id),),
+        ):
+            pontos.append({
+                "t_ms": linha[0],
+                "x_m": linha[1],
+                "z_m": linha[2],
+                "helmet": bool(linha[3]),
+                "vest": bool(linha[4]),
+                "in_risk": bool(linha[5]),
+            })
+    except (sqlite3.Error, TypeError, ValueError):
+        pass
+    finally:
+        if conexao:
+            conexao.close()
+    return pontos
+
+
+def salvar_pontos_trajetoria(ocorrencia_id: int, pontos: list) -> bool:
+    """Persiste a lista de pontos de trajetória de uma ocorrência."""
+    if not pontos:
+        return False
+    if not os.path.isfile(CAMINHO_BANCO):
+        return False
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for p in pontos:
+            cursor.execute(
+                "INSERT INTO trajetoria (ocorrencia_id, track_id, t_ms, x_m, z_m, helmet, vest, in_risk, fonte) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    int(ocorrencia_id),
+                    p.get("track_id"),
+                    int(p.get("t_ms", 0)),
+                    float(p.get("x_m", 0)),
+                    float(p.get("z_m", 0)),
+                    int(p.get("helmet", 0)),
+                    int(p.get("vest", 0)),
+                    int(p.get("in_risk", 0)),
+                    p.get("fonte", "real"),
+                ),
+            )
+        conexao.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        if conexao:
+            conexao.close()
+
+
+def limpar_trajetoria_antiga(dias: int = 90) -> int:
+    """Remove trajetorias de ocorrências anteriores a ``dias`` dias (retenção de 90 dias)."""
+    if not os.path.isfile(CAMINHO_BANCO):
+        return 0
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        corte = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%dT%H:%M:%S")
+        cursor.execute(
+            "DELETE FROM trajetoria WHERE ocorrencia_id IN (SELECT id FROM ocorrencias WHERE timestamp < ?)",
+            (corte,),
+        )
+        apagados = cursor.rowcount
+        conexao.commit()
+        return apagados
+    except sqlite3.Error:
+        return 0
+    finally:
+        if conexao:
+            conexao.close()
+
+
+# ===== 4. MAPA DE CALOR NORMALIZADO POR EXPOSIÇÃO (exposicao_celula) =====
+def registrar_exposicao_celulas(incrementos: dict) -> bool:
+    """Incrementa a exposição de cada célula (presença/infração/eventos)."""
+    if not incrementos:
+        return False
+    if not os.path.isfile(CAMINHO_BANCO):
+        return False
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for celula_idx, (presenca, infracao, eventos) in incrementos.items():
+            cursor.execute(
+                "INSERT INTO exposicao_celula (celula_idx, segundos_presenca, segundos_infracao, total_eventos) VALUES (?, ?, ?, ?) ON CONFLICT(celula_idx) DO UPDATE SET segundos_presenca = segundos_presenca + excluded.segundos_presenca, segundos_infracao = segundos_infracao + excluded.segundos_infracao, total_eventos = total_eventos + excluded.total_eventos",
+                (int(celula_idx), float(presenca), float(infracao), int(eventos)),
+            )
+        conexao.commit()
+        return True
+    except sqlite3.Error:
+        return False
+    finally:
+        if conexao:
+            conexao.close()
+
+
+def obter_mapa_calor() -> list:
+    """Retorna o mapa de calor: {celula_idx, segundos_presenca, segundos_infracao, total_eventos, taxa_infracao}.
+
+    ``taxa_infracao`` é normalizada pela presença (infração / presença), então
+    um corredor com muita passagem legal não fica "quente" só por volume.
+    """
+    mapa = []
+    if not os.path.isfile(CAMINHO_BANCO):
+        return mapa
+    conexao = None
+    try:
+        conexao = _abrir_banco()
+        cursor = conexao.cursor()
+        for linha in cursor.execute(
+            "SELECT celula_idx, segundos_presenca, segundos_infracao, total_eventos FROM exposicao_celula ORDER BY celula_idx"
+        ):
+            celula_idx, presenca, infracao, eventos = linha
+            taxa_infracao = infracao / max(1.0, presenca)
+            mapa.append({
+                "celula_idx": celula_idx,
+                "segundos_presenca": presenca,
+                "segundos_infracao": infracao,
+                "total_eventos": eventos,
+                "taxa_infracao": taxa_infracao,
+            })
+    except sqlite3.Error:
+        pass
+    finally:
+        if conexao:
+            conexao.close()
+    return mapa
+
+
+# ===== 5. CONSULTAS AGREGADAS DO DASHBOARD =====
 def _limites_periodo(dias, agora=None):
     """Dias de calendário: ``dias=1`` é hoje desde 00:00; ``7`` são os 7 últimos dias
     incluindo hoje. Devolve (desde, ate, desde_anterior) como datetime."""
@@ -593,145 +780,3 @@ def calcular_dados_dashboard(dias: int = 7):
         "anterior": {"conformidade": anterior.get("conformidade"),
                      "pessoas_observadas": anterior.get("pessoas_observadas", 0)},
     }
-
-
-# ---------------------------------------------------------------------------
-# Trajetória e exposição por célula (Etapas 4 e 5 do Plano de Evolução)
-# ---------------------------------------------------------------------------
-def obter_trajetoria(ocorrencia_id: int) -> list:
-    """Retorna a lista de pontos de trajetória de uma ocorrência (ordenados por tempo)."""
-    pontos = []
-    if not os.path.isfile(CAMINHO_BANCO):
-        return pontos
-    conexao = None
-    try:
-        conexao = _abrir_banco()
-        cursor = conexao.cursor()
-        for linha in cursor.execute(
-            "SELECT t_ms, x_m, z_m, helmet, vest, in_risk FROM trajetoria WHERE ocorrencia_id = ? ORDER BY t_ms, id",
-            (int(ocorrencia_id),),
-        ):
-            pontos.append({
-                "t_ms": linha[0],
-                "x_m": linha[1],
-                "z_m": linha[2],
-                "helmet": bool(linha[3]),
-                "vest": bool(linha[4]),
-                "in_risk": bool(linha[5]),
-            })
-    except (sqlite3.Error, TypeError, ValueError):
-        pass
-    finally:
-        if conexao:
-            conexao.close()
-    return pontos
-
-
-def salvar_pontos_trajetoria(ocorrencia_id: int, pontos: list) -> bool:
-    """Persiste a lista de pontos de trajetória de uma ocorrência."""
-    if not pontos:
-        return False
-    if not os.path.isfile(CAMINHO_BANCO):
-        return False
-    conexao = None
-    try:
-        conexao = _abrir_banco()
-        cursor = conexao.cursor()
-        for p in pontos:
-            cursor.execute(
-                "INSERT INTO trajetoria (ocorrencia_id, track_id, t_ms, x_m, z_m, helmet, vest, in_risk, fonte) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    int(ocorrencia_id),
-                    p.get("track_id"),
-                    int(p.get("t_ms", 0)),
-                    float(p.get("x_m", 0)),
-                    float(p.get("z_m", 0)),
-                    int(p.get("helmet", 0)),
-                    int(p.get("vest", 0)),
-                    int(p.get("in_risk", 0)),
-                    p.get("fonte", "real"),
-                ),
-            )
-        conexao.commit()
-        return True
-    except sqlite3.Error:
-        return False
-    finally:
-        if conexao:
-            conexao.close()
-
-
-def limpar_trajetoria_antiga(dias: int = 90) -> int:
-    """Remove trajetorias de ocorrências anteriores a ``dias`` dias (limpeza)."""
-    if not os.path.isfile(CAMINHO_BANCO):
-        return 0
-    conexao = None
-    try:
-        conexao = _abrir_banco()
-        cursor = conexao.cursor()
-        corte = (datetime.now() - timedelta(days=dias)).strftime("%Y-%m-%dT%H:%M:%S")
-        cursor.execute(
-            "DELETE FROM trajetoria WHERE ocorrencia_id IN (SELECT id FROM ocorrencias WHERE timestamp < ?)",
-            (corte,),
-        )
-        apagados = cursor.rowcount
-        conexao.commit()
-        return apagados
-    except sqlite3.Error:
-        return 0
-    finally:
-        if conexao:
-            conexao.close()
-
-
-def registrar_exposicao_celulas(incrementos: dict) -> bool:
-    """Incrementa a exposição de cada célula (presença/infração/eventos)."""
-    if not incrementos:
-        return False
-    if not os.path.isfile(CAMINHO_BANCO):
-        return False
-    conexao = None
-    try:
-        conexao = _abrir_banco()
-        cursor = conexao.cursor()
-        for celula_idx, (presenca, infracao, eventos) in incrementos.items():
-            cursor.execute(
-                "INSERT INTO exposicao_celula (celula_idx, segundos_presenca, segundos_infracao, total_eventos) VALUES (?, ?, ?, ?) ON CONFLICT(celula_idx) DO UPDATE SET segundos_presenca = segundos_presenca + excluded.segundos_presenca, segundos_infracao = segundos_infracao + excluded.segundos_infracao, total_eventos = total_eventos + excluded.total_eventos",
-                (int(celula_idx), float(presenca), float(infracao), int(eventos)),
-            )
-        conexao.commit()
-        return True
-    except sqlite3.Error:
-        return False
-    finally:
-        if conexao:
-            conexao.close()
-
-
-def obter_mapa_calor() -> list:
-    """Retorna o mapa de calor: {celula_idx, segundos_presenca, segundos_infracao, total_eventos, taxa_infracao}."""
-    mapa = []
-    if not os.path.isfile(CAMINHO_BANCO):
-        return mapa
-    conexao = None
-    try:
-        conexao = _abrir_banco()
-        cursor = conexao.cursor()
-        for linha in cursor.execute(
-            "SELECT celula_idx, segundos_presenca, segundos_infracao, total_eventos FROM exposicao_celula ORDER BY celula_idx"
-        ):
-            celula_idx, presenca, infracao, eventos = linha
-            taxa_infracao = infracao / max(1.0, presenca)
-            mapa.append({
-                "celula_idx": celula_idx,
-                "segundos_presenca": presenca,
-                "segundos_infracao": infracao,
-                "total_eventos": eventos,
-                "taxa_infracao": taxa_infracao,
-            })
-    except sqlite3.Error:
-        pass
-    finally:
-        if conexao:
-            conexao.close()
-    return mapa

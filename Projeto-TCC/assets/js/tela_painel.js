@@ -1,3 +1,14 @@
+/* =========================================================================
+   tela_painel.js — Tela "Painel" (conformidade Pessoa-Frame, fila e histórico)
+   -------------------------------------------------------------------------
+   Controla:
+   - a chamada REST GET /dashboard_dados (período: hoje/7/30 dias);
+   - KPIs de conformidade (meta 95%, crítico < LIMITE_CRITICO) com contagem
+     animada e estado acessível (ícone + texto, nunca só cor);
+   - série diária + rosca de infrações (via grafico.js);
+   - mini fila de ocorrências pendentes (mesma base de tela_ocorrencias.js).
+   ========================================================================= */
+/* ===== 1. CONSTANTES, ESTADO E CARGA INICIAL ===== */
 /* Tela "Painel": conformidade = pessoas-frame conformes / pessoas-frame observadas. */
 import { apiJson } from "./api.js";
 import { el, icone, infoTipo, ordemGravidade, formatarPercentual, plural } from "./util.js";
@@ -29,6 +40,7 @@ export async function carregarPainel() {
   desenhar();
 }
 
+/* ===== 2. RENDERIZAÇÃO (KPIs, séries, rosca, fila) ===== */
 let valorAnterior = null;
 const reduzMovimento = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 const fmt = (v) => v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
@@ -170,6 +182,7 @@ function desenharFila() {
     : [el("p", { class: "vazio" }, jaCarregou() ? "Nada aguardando revisão." : "Carregando…")]));
 }
 
+/* ===== 3. EVENTOS DE PERÍODO/RESIZE E REGISTRO DA TELA ===== */
 seg.addEventListener("click", (e) => {
   const b = e.target.closest("button[data-dias]");
   if (!b) return;

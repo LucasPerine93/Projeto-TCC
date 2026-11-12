@@ -1,7 +1,18 @@
-/* Cenas = uma foto com uma ou mais ocorrências (vários trabalhadores no mesmo frame).
-   Agrupa as ocorrências e desenha as caixas de detecção sobre a foto. Lógica
-   herdada da galeria anterior; a diferença é que aqui não há acesso ao estado da tela:
-   quem chama passa um callback para a seleção de trabalhador. */
+/* =========================================================================
+   cenas.js — Cenas e caixas de detecção (vários trabalhadores, mesma foto)
+   -------------------------------------------------------------------------
+   Controla:
+   - leitura robusta do campo ``caixas`` (JSON ou já objeto) e
+     normalização das caixas [x1,y1,x2,y2];
+   - agrupamento das ocorrências por foto ("cena") e montagem da lista de
+     trabalhadores únicos da cena (deduplicada pela caixa da pessoa);
+   - desenho das caixas sobre a imagem em qualqer tamanho (conversão
+     pixels do frame 720x480 -> imagem natural -> pixels renderizados).
+
+   O quem chama (tela_ocorrencias.js) passa um callback de seleção; aqui não
+   há acesso ao estado da tela.
+   ========================================================================= */
+// ===== 1. LEITURA E NORMALIZAÇÃO DE CAIXAS =====
 import { el } from "./util.js";
 
 // Resolução do frame da câmera usada pelo detector (pixels das caixas).
@@ -73,6 +84,7 @@ function montarTrabalhadores(ocorrencias) {
   return trabalhadores;
 }
 
+// ===== 2. AGRUPAMENTO POR CENA (agruparCenas) =====
 /** Agrupa as ocorrências por foto (cena). A ordem das cenas segue a da lista recebida. */
 export function agruparCenas(ocorrencias) {
   const cenas = new Map();
@@ -117,6 +129,7 @@ export function agruparCenas(ocorrencias) {
   });
 }
 
+/* ===== 3. SELOS DE REVISÃO (resumoRevisao) ===== */
 /** Contagem de revisão de uma cena. */
 export function resumoRevisao(cena) {
   const contagem = { total: cena.ocorrencias.length, pendente: 0, confirmada: 0, descartada: 0 };
@@ -124,9 +137,7 @@ export function resumoRevisao(cena) {
   return contagem;
 }
 
-/* ==========================================================================
-   CAIXAS DE DETECÇÃO PROPORCIONAIS À IMAGEM
-   ========================================================================== */
+// ===== 4. CAIXAS DE DETECÇÃO PROPORCIONAIS À IMAGEM (frame 720x480) =====
 function criarCaixaDeteccao(rotulo, caixa, confianca, classeCss, extra = {}) {
   const elemento = el("div", { class: `caixa-deteccao ${classeCss || ""} ${extra.estado || ""}`.trim() });
   if (extra.indice !== undefined && extra.indice !== null) elemento.dataset.trabalhador = String(extra.indice);

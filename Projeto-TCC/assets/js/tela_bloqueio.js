@@ -1,5 +1,18 @@
-/* Acesso. Prefere a sessão por cookie (POST /login, GET /sessao). Se o servidor ainda
-   não tem essas rotas (404/405), cai no fluxo antigo: evento "senha" pelo socket. */
+/* =========================================================================
+   tela_bloqueio.js — Acesso ao painel: login por cookie com fallback legado
+   -------------------------------------------------------------------------
+   Controla:
+   - formulário de senha (#form-login): POST /login com fallback para o
+     fluxo antigo por socket ("senha" via send_message) quando o servidor
+     ainda não expõe as rotas HTTP (404/405);
+   - liberar(): marca autenticado, esconde a tela de acesso e chama o
+     callback "entrou";
+   - logout (sair) e expiração de sessão (evento "sessao-expirada").
+
+   Fluxo: senha boa -> sessão no backend (cookie HttpOnly) -> socket liberado
+   via mensagem "auth" com o ticket de uso único; a senha nunca vai no storage.
+   ========================================================================= */
+/* ===== 1. ELEMENTOS E ESTADO DA TELA DE ACESSO ===== */
 import { ui } from "./conexao_ui.js";
 import { api } from "./api.js";
 import { estado, mostrarBloqueio } from "./nucleo.js";
@@ -42,6 +55,7 @@ export function bloquear(mensagem = "") {
   aoSair();
 }
 
+/* ===== 2. SUBMIT DO FORMULÁRIO (POST /login com fallback legado) ===== */
 function entrarPeloSocket(senha) {
   // O servidor antigo compara com um inteiro.
   const valor = /^\d+$/.test(senha) ? parseInt(senha, 10) : senha;
@@ -76,6 +90,7 @@ form.addEventListener("submit", async (evento) => {
   }
 });
 
+/* ===== 3. RECEPÇÃO DE RESPOSTAS DO SOCKET, LOGOUT E RESTAURAÇÃO ===== */
 ui.on_message("liberado", () => liberar());
 ui.on_message("rejeitado", () => {
   ocupado(false);

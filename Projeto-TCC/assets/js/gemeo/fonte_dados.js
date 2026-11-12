@@ -1,11 +1,13 @@
-/* Camada de adaptação de dados do Gêmeo 3D.
- *
- * O motor 3D NÃO sabe de onde vêm os dados: ele só consome "quadros" normalizados.
- * Esta camada recebe mensagens brutas de qualquer origem (WebSocket externo, o socket do
- * painel Arduino, testes), valida, converte para um formato único e controla o estado
- * da conexão. A simulação não passa por aqui: ela é a fonte "simulation" do próprio motor.
- *
- * Quadro normalizado:
+/* =========================================================================
+   fonte_dados.js — Normalizador de payloads, validação e reconexão do Gêmeo 3D
+   -------------------------------------------------------------------------
+   Controla a CAMADA DE ADAPTAÇÃO DE DADOS entre as origens de entrada e o
+   motor 3D: converte qualquer mensagem (WebSocket, socket do painel, JSON
+   de teste) no "quadro normalizado" que o motor consome, controla o estado
+   da conexão (inativa/conectando/aguardando/ativa/sem-sinal) e descarta
+   quadros velhos/duplicados. A simulação NÃO passa por aqui.
+
+   Quadro normalizado:
  *   { source: "real", timestamp: ms|null, sequence: n|null, receivedAt: ms,
  *     workers: [{
  *       id: "12",                          // identificador temporário da trilha (não é identidade civil)
@@ -23,10 +25,16 @@
  *   2. o formato plano da v7:  { id, x, z, capacete, colete, inRisk };
  *   3. o formato nativo do detector Python (Operario): { track_id, box_xyxy, tem_capacete,
  *      tem_colete, conf_*, risco_detectado } — sem posição na planta (ver PLANO_EVOLUCAO.md).
- */
+
+   Índice de seções:
+   1. Constantes e utilitários de validação
+   2. Normalização de trabalhadores e mensagens (quadro único)
+   3. Controlador de fonte "real" (reconexão com backoff, stale, API exportada)
+   ========================================================================= */
 (function (raiz) {
   'use strict';
 
+  // ===== 1. CONSTANTES E UTILITÁRIOS DE VALIDAÇÃO =====
   const MAX_TRABALHADORES = 32;
   const FRAME_W = 720, FRAME_H = 480;        // resolução da câmera do detector (python/detector.py)
 
@@ -36,6 +44,7 @@
   const bool = (v) => (v === undefined || v === null ? null : !!v);
   const pick = (o, ...chaves) => { for (const k of chaves) if (o[k] !== undefined) return o[k]; return undefined; };
 
+  // ===== 2. NORMALIZAÇÃO DE TRABALHADORES E MENSAGENS =====
   function statusDe(ppe, inRisk) {
     if (inRisk) return 'risk';
     if (ppe.helmet === false || ppe.vest === false) return 'violation';
@@ -113,6 +122,7 @@
     return { frame: { source: 'real', timestamp: ts, sequence: seq, receivedAt: agora, workers }, invalidos, erro: null };
   }
 
+  // ===== 3. CONTROLADOR DE FONTE "REAL" E API EXPORTADA =====
   /** Controlador de fonte "real": estado de conexão, descarte de quadros velhos, quadro mais recente. */
   function criarFonte(opcoes) {
     const o = Object.assign({ staleMs: 3000, relogio: () => Date.now(), aoMudarEstado: () => {}, aoLog: () => {},

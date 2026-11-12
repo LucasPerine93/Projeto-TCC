@@ -1,4 +1,18 @@
-/* Tela "Ocorrências": fila de revisão, filtros, detalhes e exportação. */
+/* =========================================================================
+   tela_ocorrencias.js — Tela "Ocorrências": fila de revisão e detalhes
+   -------------------------------------------------------------------------
+   Controla:
+   - carregamento de /listar_ocorrencias, agrupamento em cenas (cenas.js) e
+     selo de pendentes na aba;
+   - filtros interativos (status/período/tipo) e paginação progressiva;
+   - detalhe com caixas sobre a foto (desenharCaixas) e revisão manual
+     (confirmar/descartar) com desfazer;
+   - exportação CSV e hand-off para o Replay 3D (replay_instancia no Gêmeo).
+
+   Nada é apagado pelo "Descartar": é a revisão do técnico (falso positivo),
+   persistida via POST /revisar_ocorrencia.
+   ========================================================================= */
+/* ===== 1. DADOS (CARREGAMENTO, SELO DE PENDENTES) ===== */
 import { apiJson, api } from "./api.js";
 import {
   el, icone, infoTipo, pilulaTipo, pilulaStatus, ordemGravidade, TIPOS_CONHECIDOS, normalizar,
@@ -28,7 +42,6 @@ let falhou = false;
 let visiveis = TAMANHO_PAGINA;
 let temporizador = null;
 
-/* ---------- dados ---------- */
 export const todasAsCenas = () => cenas;
 export const jaCarregou = () => carregado;
 export const cenasPendentes = () =>
@@ -60,7 +73,7 @@ function atualizarSelo() {
   selo.setAttribute("aria-label", `${n} pendentes de revisão`);
 }
 
-/* ---------- filtros ---------- */
+/* ===== 2. FILTROS ===== */
 function cenaPassa(cena, { ignorarTipo = false, ignorarStatus = false } = {}) {
   if (filtros.periodo !== "todos" && new Date(cena.timestamp) < inicioDoPeriodo(filtros.periodo)) return false;
   return cena.ocorrencias.some((o) =>
@@ -110,7 +123,7 @@ function cenasFiltradas() {
   return cenas.filter((c) => cenaPassa(c)).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
 
-/* ---------- lista ---------- */
+/* ===== 3. LISTA E FILTRAGEM ===== */
 export function criarItemCena(cena, { aoAbrir, comAcoes = true } = {}) {
   const r = resumoRevisao(cena);
   const tipos = [...new Set(cena.ocorrencias.map((o) => o.tipo_infracao))]
@@ -181,7 +194,7 @@ filtroPeriodo.addEventListener("change", () => { filtros.periodo = filtroPeriodo
 /** Abre a lista já filtrada por situação (usado pelo Painel). */
 export function filtrarPorStatus(status) { filtros.status = status; filtros.tipo = null; }
 
-/* ---------- CSV ---------- */
+/* ===== 4. EXPORTAÇÃO CSV ===== */
 function campoCsv(valor) {
   let texto = String(valor ?? "");
   if (/^[=+\-@\t\r]/.test(texto)) texto = `'${texto}`; // evita fórmulas ao abrir no Excel
@@ -210,7 +223,7 @@ botaoExportar.addEventListener("click", () => {
   avisoExportar.textContent = `${plural(linhas.length, "ocorrência exportada", "ocorrências exportadas")} (${filtros.status === "todas" ? "todas as situações" : filtros.status}).`;
 });
 
-/* ---------- detalhes ---------- */
+/* ===== 5. DETALHE DA CENA E REVISÃO ===== */
 const dlg = document.getElementById("dialogo-detalhe");
 const D = (id) => document.getElementById(id);
 const moldura = D("foto-moldura");
@@ -392,7 +405,7 @@ D("rev-falso-ok").addEventListener("click", () => {
   D("rev-falso").setAttribute("aria-expanded", "false");
   revisarAtual("descartada", obs ? `${base} — ${obs}` : base);
 });
-/* ---------- Replay 3D de uma ocorrencia real (Etapa 4) ---------- */
+/* ===== 6. REPLAY 3D DE UMA OCORRÊNCIA REAL (Etapa 4) ===== */
 /* O motor do gemeo carrega sob demanda ao entrar na aba; espera o hook aparecer. */
 function esperarHookReplay(tentativas = 30) {
   if (typeof window.gemeoReproduzirOcorrencia === "function") return Promise.resolve(window.gemeoReproduzirOcorrencia);
@@ -428,7 +441,7 @@ D("rev-todas").addEventListener("click", async () => {
   if (n) await aposRevisao(`${plural(n, "infração confirmada", "infrações confirmadas")}.`);
 });
 
-/* ---------- ciclo de vida ---------- */
+/* ===== 7. CICLO DE VIDA DA TELA ===== */
 document.addEventListener("nova-ocorrencia", () => { if (carregado) carregarOcorrencias(); });
 
 export function iniciarOcorrencias() {

@@ -1,3 +1,12 @@
+/* =========================================================================
+   grafico.js — Gráficos SVG puros do painel (sem biblioteca externa)
+   -------------------------------------------------------------------------
+   Controla:
+   - desenharLinha(): linha de conformidade diária (pontos com null = lacuna
+     "sem dados", nunca 0% inventado); meta de conformidade opcional;
+   - desenharRosca(): rosca de distribuição com animação via CSS.
+   ========================================================================= */
+/* ===== 1. HELPERS SVG E GRÁFICO DE LINHA (desenharLinha) ===== */
 /* Gráfico de linha em SVG puro (sem biblioteca).
    pontos: [{ rotulo, valor }]; valor === null = dia sem dados (lacuna, nunca 0%). */
 const NS = "http://www.w3.org/2000/svg";
@@ -70,6 +79,7 @@ export function desenharLinha(svg, pontos, { meta = null } = {}) {
     : "Conformidade diária: sem dados no período");
 }
 
+/* ===== 2. ROSCA (desenharRosca) ===== */
 /** Rosca em SVG puro. itens: [{ rotulo, valor, cor }]. A animação de preenchimento é
  *  feita por transição CSS de stroke-dasharray (acionada depois do primeiro quadro). */
 export function desenharRosca(svg, itens, { centro = "", legendaCentro = "" } = {}) {

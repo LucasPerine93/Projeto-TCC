@@ -1,6 +1,8 @@
-"""Assistente contextual somente-leitura (Secao 11 / Etapa 8 do Plano de Evolucao).
+"""assistente.py — Assistente contextual somente-leitura do painel (Etapa 8 / Seção 11).
 
-Responde perguntas OLHANDO SOMENTE os helpers ja existentes de ``banco.py``:
+Papel do arquivo
+----------------
+Responde perguntas OLHANDO SOMENTE os helpers já existentes de ``banco.py``:
 
 - ``banco.calcular_dados_dashboard`` (periodo + conformidade pessoa-frame);
 - ``banco.dados_ocorrencias``        (base bruta, se necessario);
@@ -12,6 +14,19 @@ ambiente ``ASSISTENTE_LLM_URL`` estiver definida; mesmo assim o payload
 enviado e apenas a pergunta + um resumo agregado de numeros (sem imagens,
 sem dados pessoais identificaveis). Qualquer falha do proxy cai de volta no
 motor local deterministico (100% offline).
+
+Entradas / Saídas
+-----------------
+- Entrada: ``responder(pergunta)`` chamado pela rota ``POST /assistente`` do
+  ``servidor.py`` (que já exige sessão do painel).
+- Saída: dict serializável ``{"resposta": ..., "fonte": "local"|"llm",
+  "acoes": [...]}`` para o painel renderizar.
+
+Índice de seções
+----------------
+1. Constantes e utilitários (grade 80x60 de 0,5 m, meta de 95% da monografia)
+2. Motor analítico local — intenções e respostas determinísticas (offline)
+3. Roteamento de intenções, proxy LLM opcional (fallback seguro) e ``responder``
 """
 import json
 import os
@@ -21,6 +36,7 @@ import urllib.request
 import banco
 import config
 
+# ===== 1. CONSTANTES E UTILITÁRIOS (grade 80x60 de 0,5 m; meta 95%) =====
 META_CONFORMIDADE = float(config.META_CONFORMIDADE)
 JANELA_DIAS = 7
 MAX_PERGUNTA = 500
@@ -34,6 +50,7 @@ MUNDO_LARGURA, MUNDO_PROFUNDIDADE = 40.0, 30.0
 ASSISTENTE_LLM_URL = os.environ.get("ASSISTENTE_LLM_URL", "").strip()
 
 
+# ===== 2. MOTOR ANALÍTICO LOCAL — INTENÇÕES E RESPOSTAS DETERMINÍSTICAS (offline) =====
 def _sem_acento(texto):
     normalizado = unicodedata.normalize("NFD", texto or "")
     return "".join(c for c in normalizado if unicodedata.category(c) != "Mn").lower()
@@ -273,6 +290,7 @@ def _resposta_resumo(fatos):
     return " ".join(partes), None
 
 
+# ===== 3. ROTEAMENTO DE INTENÇÕES, PROXY LLM OPCIONAL E responder() =====
 def _categoria(pergunta):
     p = _sem_acento(pergunta)
 

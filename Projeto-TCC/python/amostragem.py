@@ -1,15 +1,34 @@
-"""Denominador da taxa de conformidade: quantas pessoas foram OBSERVADAS, não só quantas erraram.
+"""amostragem.py — Denominador da taxa de conformidade (Pessoa-Frame).
 
-Unidade = "pessoa-frame" (uma pessoa vista em um frame). A razão
-conformes / pessoas independe do FPS. As contagens ficam em memória e são
-gravadas em baldes de 1 minuto a cada INTERVALO_GRAVACAO s (poupa o pendrive:
-10 fps nunca vira 10 escritas por segundo).
+Papel do arquivo
+----------------
+Conta quantas pessoas foram OBSERVADAS no período (não só quantas erraram) e
+transforma isso na métrica Pessoa-Frame: a razão conformes / observadas
+independe do FPS da câmera, da meta de 95% da monografia e é a base de
+``taxa_conformidade`` exibida no Dashboard e no assistente.
+
+Entradas / Saídas
+-----------------
+- Entrada: ``registrar()`` chamado pelo detector a cada frame e ``descarregar()``/
+  ``resumo()`` chamados pelo banco/painel.
+- Saída: contadores por minuto gravados no SQLite (``amostras_minuto``) e
+  agregados do período com taxas (``resumo``).
+
+Índice de seções
+----------------
+1. Acumulação em memória por balde de minuto (gravação em janelas)
+2. Leitura agregada do período (taxas e série diária para o painel)
+
+Unidade = "pessoa-frame" (uma pessoa vista em um frame). As contagens ficam em
+memória e são gravadas em baldes de 1 minuto a cada INTERVALO_GRAVACAO s
+(poupa o pendrive: 10 fps nunca vira 10 escritas por segundo).
 """
 import sqlite3
 import time
 
 import config
 
+# ===== 1. ACUMULAÇÃO EM MEMÓRIA POR BALDE DE MINUTO (gravação em janelas) =====
 INTERVALO_GRAVACAO = config.INTERVALO_GRAVACAO
 MAX_BALDES_EM_MEMORIA = config.MAX_BALDES_EM_MEMORIA  # se o pendrive sumir, guarda ~2 h e descarta o mais antigo
 
@@ -72,6 +91,7 @@ def descarregar(caminho_banco, forcar=False, agora=None):
             con.close()
 
 
+# ===== 2. LEITURA AGREGADA DO PERÍODO (taxas e série diária para o painel) =====
 def _taxa(parte, total):
     return None if not total else round(100 * parte / total, 1)
 

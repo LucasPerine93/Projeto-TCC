@@ -1,8 +1,19 @@
-/* Acesso às rotas REST do servidor.
-   - envia o cookie de sessão (mesma origem) e um cabeçalho fixo que o backend
-     pode exigir nas escritas (defesa extra contra CSRF);
-   - avisa o app quando a sessão expira (HTTP 401). */
+/* =========================================================================
+   api.js — Acesso às rotas REST do servidor (fetch padronizado)
+   -------------------------------------------------------------------------
+   Controla:
+   - envio do cookie de sessão (mesma origem) e do cabeçalho fixo
+     ``X-Requested-With: painel`` que o backend exige nas escritas
+     (defesa extra contra CSRF);
+   - aviso ao app (``sessao-expirada``) quando o servidor responde HTTP 401;
+   - ``apiJson`` para respostas JSON com erro HTTP convertido em exceção.
 
+   Índice de seções:
+   1. fetch COM COOKIE DE SESSÃO + CABEÇALHO ANTI-CSRF
+   2. RESPOSTA JSON OU ERRO HTTP COMO EXCEÇÃO
+   ========================================================================= */
+
+// ===== 1. FETCH COM COOKIE DE SESSÃO + CABEÇALHO ANTI-CSRF =====
 export async function api(url, { method = "GET", corpo } = {}) {
   const opcoes = {
     method,
@@ -20,6 +31,7 @@ export async function api(url, { method = "GET", corpo } = {}) {
   return resposta;
 }
 
+/* ===== 2. RESPOSTA JSON OU ERRO HTTP COMO EXCEÇÃO ===== */
 export async function apiJson(url, opcoes) {
   const resposta = await api(url, opcoes);
   if (!resposta.ok) {

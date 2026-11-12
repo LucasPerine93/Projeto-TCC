@@ -1,3 +1,17 @@
+/* =========================================================================
+   tela_ao_vivo.js — Tela "Ao vivo": vídeo, estado do sistema, eventos e área de risco
+   -------------------------------------------------------------------------
+   Controla:
+   - chips de conexão/câmera e monitoramento periódico do endpoint de vídeo;
+   - log ao vivo (lista de eventos, classificação, alerta sonoro, KPIs);
+   - definição da área de risco sobre o vídeo (canvas 720x480) e envio da
+     caixa para o detector via send_message("area_marcada" | "limpar_box_risco");
+   - toast de "Nova ocorrência" quando chega o log de cena salva.
+
+   Toda escrita no detector passa pelo socket WebUI; esta tela nunca altera
+   regras de negócio — só informa o operador.
+   ========================================================================= */
+/* ===== 1. ESTADO DO SOCKET E MONITOR DA CÂMERA ===== */
 /* Tela "Ao vivo": vídeo, estado do sistema, eventos e área de risco. */
 import { ui } from "./conexao_ui.js";
 import { el, icone, hora, lerPreferencia, gravarPreferencia } from "./util.js";
@@ -69,7 +83,7 @@ export function pararAoVivo() {
   cancelarDefinicao();
 }
 
-/* ---------- Eventos (logs) ---------- */
+/* ===== 2. EVENTOS (LOGS), SOM E KPIS DA SESSÃO ===== */
 let somAtivo = lerPreferencia("alertaSonoroAtivo") === "true";
 let contextoAudio = null;
 let temporizadorAlerta = null;
@@ -171,7 +185,7 @@ botaoLimpar.addEventListener("click", () => {
   logsVazio.hidden = false;
 });
 
-/* ---------- Área de risco ---------- */
+/* ===== 3. ÁREA DE RISCO (CANVAS SOBRE O VÍDEO, 720x480) ===== */
 let definindo = false;
 let inicio = null;
 let areaAtual = null; // [x1,y1,x2,y2] em pixels do quadro 720x480

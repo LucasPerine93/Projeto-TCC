@@ -1,5 +1,22 @@
+/* =========================================================================
+   interface.js — Interface do Gêmeo 3D (abas laterais, PiP do CCTV, espelhos)
+   -------------------------------------------------------------------------
+   Controla a camada de UI do gêmeo: abas por tecla/toque (plan/log/workers),
+   contadores com MutationObserver (eventos/operários), espelhos de leitura
+   (os mesmos valores aparecem na sidebar e no resumo), painel lateral
+   colapsável, PiP do monitor CCTV (min/mid/max, teatro automático em celular
+   e ao calibrar/pintando risco) e restauração do estado salvo no localStorage.
+   NÃO altera a lógica do motor 3D (metadata = #viewer / canvas do Three.js).
+
+   Índice de seções:
+   1. Abas laterais e navegação por teclado
+   2. Contadores de eventos e de operários (MutationObserver)
+   3. Espelhos de leitura (KPI -> resumo)
+   4. Painel lateral e PiP do CCTV (min/mid/max, teatro automático)
+   ========================================================================= */
 /* UI v7.0: abas, painel lateral, PiP do CCTV e espelhos de leitura. Não altera a lógica do gêmeo digital. */
 (function () {
+  // ===== 1. ABAS LATERAIS (abas e navegação por teclado) =====
   const $ = (id) => document.getElementById(id);
   const shell = $('shell'), pip = $('pip');
   const store = {
@@ -31,6 +48,7 @@
     });
   });
 
+  // ===== 2. CONTADORES DE EVENTOS E DE OPERÁRIOS =====
   // ---- contadores de eventos e operários ----
   let total = document.querySelectorAll('#log li:not(.empty)').length, lastKey = '';
   const newest = () => { const li = $('log').querySelector('li:not(.empty)'); return li ? li.textContent : ''; };
@@ -52,6 +70,7 @@
   const wc = () => { $('tabWCount').textContent = $('workers').querySelectorAll('.wchip:not([hidden])').length; };
   new MutationObserver(wc).observe($('workers'), { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden'] }); wc();
 
+  // ===== 3. ESPELHOS DE LEITURA (a lógica original continua escrevendo nos ids originais) =====
   // ---- espelhos (a lógica original continua escrevendo nos ids originais) ----
   function mirror(src, dst) {
     const s = $(src), d = $(dst), f = () => { d.textContent = s.textContent; };
@@ -63,6 +82,7 @@
   new MutationObserver(syncConf).observe(confCard, { attributes: true, attributeFilter: ['data-state'] });
   new MutationObserver(syncConf).observe(confFill, { attributes: true, attributeFilter: ['style'] }); syncConf();
 
+  // ===== 4. PAINEL LATERAL E PiP DO CCTV (min/mid/max) =====
   // ---- painel lateral ----
   function setSide(open, temporario) {
     shell.dataset.side = open ? 'open' : 'closed';
