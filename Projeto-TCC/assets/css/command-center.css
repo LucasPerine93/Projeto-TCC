@@ -178,6 +178,10 @@ dialog::backdrop { background: rgba(2, 6, 13, 0.72); }
 .item-oc .item-principal { flex: 1 1 auto; }
 .item-acoes { padding: 0 14px 14px; margin-top: auto; }
 .item-acoes .btn { width: 100%; }
+/* Miniatura compacta (frame 3:2 limitada a 150px, mantendo position: relative e
+   overflow: hidden para caixas de detecção ficarem alinhadas) — aplicado nos cards
+   da Galeria (.lista-ocorrencias) e da fila "Aguardando revisão" do Painel. */
+.lista-ocorrencias .miniatura, #fila-pendentes .miniatura { max-height: 150px; }
 
 dialog { width: min(1180px, calc(100vw - 24px)); border-radius: 14px; }
 .dlg-corpo { grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 22px; }
@@ -209,6 +213,7 @@ dialog { width: min(1180px, calc(100vw - 24px)); border-radius: 14px; }
   .topo { background: var(--fundo-2); }
   #abas { background: var(--fundo-2); }
   .lista-ocorrencias { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+  #fila-pendentes { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
   .item-oc { display: flex; }
   .item-principal { grid-template-columns: none; }
   .miniatura { width: 100%; }

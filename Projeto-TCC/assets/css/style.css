@@ -269,6 +269,8 @@ main:focus { outline: none; }
 
 .fila-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .fila-cab h2 { margin: 0 0 12px; }
+/* A fila reutiliza o visual moderno dos cards da Galeria: grade lado a lado, foto compacta. */
+#fila-pendentes { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; align-items: stretch; }
 
 /* ===== 8. DILOGO DE DETALHES E CAIXAS DE DETECÇÃO ===== */
 dialog {
