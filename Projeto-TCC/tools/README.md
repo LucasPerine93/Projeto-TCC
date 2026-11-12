@@ -4,6 +4,49 @@ Esta pasta guarda utilidades de desenvolvimento. O servidor de preview
 **não é versionado**: ele mora em `C:\Users\Usuario\Desktop\TCC\_preview_tcc\preview_server.py`
 (e fora do Git de propósito, pois semeia banco fake + injeta hash de teste).
 
+## Gêmeo 3D — lançador de demonstração de 1 clique (`iniciar_demo.py`)
+
+Dois cliques em **`Iniciar_Demo_TCC.bat`** (raiz do projeto, um nível acima de `tools/`)
+abrem o painel completo no navegador — login, ocorrências, revisão, URLs, Gêmeo 3D,
+assistente IA, tela "Ao vivo" — sem terminal e sem digitar comando.
+
+O que ele faz, nesta ordem:
+
+1. **Garante um banco SQLite de demonstração** em `tools/.demo/` (ignorado pelo Git
+   pela regra `*.db`; nada toca o pendrive real `/app/pendrive`). Semeadura só se o
+   banco estiver vazio; re-execuções **não duplicam dados**:
+   - 6 ocorrências variadas (Sem capacete, Sem colete, Sem capacete e colete,
+     Invasão de área de risco; pendentes/confirmada/descartada) com
+     `(x_m, z_m, celula_idx)` na planta e caixas de detecção coerentes com a
+     infração (sem EPI faltante na lista, dois operários na cena de uma delas);
+   - trajetórias de **±15 s** em `trajetoria` para o **Replay 3D** de toda ocorrência;
+   - mapa de calor semeado em `exposicao_celula` (553+ células);
+   - 7 dias × 4 janelas/min de amostras Pessoa-Frame em `amostras_minuto`
+     (o Dashboard mostra conformidade real);
+   - evidências JPEG 720×480 geradas em `tools/.demo/evidencias/`.
+2. **`ws_teste_gemeo.py`** como subprocesso em `ws://localhost:8000/ws` (fonte
+   "dados reais do WebSocket" no Gêmeo 3D, com 3 operários simulados).
+3. **O painel real** (`python/servidor.py`, FastAPI + socket.io) em
+   `http://127.0.0.1:8765`, com uma **câmera simulada** em
+   `http://127.0.0.1:4912/embed` (a tela "Ao vivo" não fica quebrada sem a placa).
+4. **Abre o navegador** e imprime no console o painel de acesso
+   (`admin` / `admin123`, URLs, banco de dados e checklist do que testar).
+
+Para encerrar: **Ctrl+C** na janela (servidor, WebSocket e câmera simulada são
+encerrados; a calibração de demonstração só é removida se o próprio lançador a criou).
+
+Opções: `--sem-navegador` (não abre o navegador) e `--verificar` (auto-verifica as
+rotas principais — `/sessao`, `/listar_ocorrencias`, `/dashboard_dados`, `/mapa_calor`,
+`/snapshot` — e encerra de forma limpa; útil em CI).
+
+Dependência nova de desenvolvimento: **`python-socketio`** (5.x + engine.io; é o mesmo
+protocolo que o navegador fala via `socket.io` 4.x — EIO=4). O `servidor.py` só é
+alterado no lançador por stubs (o módulo `arduino.app_bricks.web_ui` e a importação
+circular `servidor` ↔ `banco` exigem um adaptador; nada do comportamento do painel
+muda). Atalho da Área de Trabalho: cópia de `Iniciar_Demo_TCC.bat` em
+`C:\Users\Usuario\Desktop\TCC\Iniciar_Demo_TCC.bat` apontando para a pasta do
+repositório.
+
 ## Preview local do painel (Windows)
 
 ```powershell

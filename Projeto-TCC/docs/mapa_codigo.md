@@ -4,6 +4,7 @@
 
 ```
 Projeto-TCC/
+├── Iniciar_Demo_TCC.bat            # Duplo clique no Windows: sobe a demonstração completa (painel + semente)
 ├── python/                          # Back-end: detector, servidor web, persistência
 │   ├── main.py                      # Inicialização do App Lab, loop da câmera, integração com o detector
 │   ├── detector.py                  # Pipeline de detecção: EPIs, área de risco, projeção, trilhas, buffer circular
@@ -41,6 +42,7 @@ Projeto-TCC/
 │
 ├── tools/                           # Ferramentas de linha de comando
 │   ├── avaliar_experimento.py       # Avaliação automática de experimentos (métricas, saída JSON)
+│   ├── iniciar_demo.py              # Lançador de demonstração de 1 clique (semeia banco, painel, WS, câmera simulada)
 │   └── ws_teste_gemeo.py            # Teste WebSocket para o Gêmeo 3D (envia quadros simulados)
 │
 ├── tests/                           # Testes
